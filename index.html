@@ -139,8 +139,9 @@
         // --- Configuration & State ---
         const config = {
             motionSensitivity: 35,
-            flowerDensity: 2.5, // Minimum distance between flowers
-            gardenLifespan: 400, // How many frames a flower stays alive before shrinking
+            flowerDensity: 2.2, // Minimum distance between flowers
+            gardenLifespan: 500, // How many frames a flower stays alive before shrinking
+            windStrength: 0.02,
             showWebcam: false,
             goFullscreen: () => {
                 if (!document.fullscreenElement) document.documentElement.requestFullscreen();
@@ -150,6 +151,8 @@
 
         const brandColors = [0xFFC107, 0xFF5722, 0xE91E63, 0x4CAF50, 0x2196F3, 0x9C27B0, 0x00BCD4]; 
         let hasStarted = false;
+        let globalWind = 0;
+        let targetWind = 0;
 
         // --- Setup Admin GUI ---
         const gui = new GUI({ title: '🌱 Garden Admin Panel' });
@@ -157,6 +160,7 @@
         motionFolder.add(config, 'motionSensitivity', 10, 80, 1).name('Motion Sensitivity');
         motionFolder.add(config, 'flowerDensity', 1, 5, 0.1).name('Flower Spacing');
         motionFolder.add(config, 'gardenLifespan', 100, 1000, 10).name('Flower Lifespan');
+        motionFolder.add(config, 'windStrength', 0, 0.1, 0.01).name('Base Wind Level');
         motionFolder.add(config, 'showWebcam').name('Show Webcam').onChange(v => {
             if (!document.fullscreenElement) document.getElementById('video-container').style.display = v ? 'block' : 'none';
         });
@@ -166,7 +170,6 @@
         const scene = new THREE.Scene();
         scene.fog = new THREE.FogExp2(0x0a1710, 0.015);
 
-        // Orthographic-like wide perspective for the wall
         const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
         camera.position.set(0, 0, 25); 
 
@@ -175,7 +178,6 @@
         renderer.setClearColor(0x0a1710, 1);
         document.body.appendChild(renderer.domElement);
 
-        // Dreamy Lighting
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
         scene.add(ambientLight);
         const dirLight = new THREE.DirectionalLight(0xfff5e6, 1.2);
@@ -186,55 +188,51 @@
         const flowers = [];
         const fireflies = [];
 
-        // Geometries for performance sharing
         const centerGeo = new THREE.SphereGeometry(0.3, 16, 16);
         const petalGeo = new THREE.SphereGeometry(0.5, 16, 16);
-        petalGeo.scale(1, 0.2, 1.5); // Flatten and stretch sphere into a petal shape
+        petalGeo.scale(1, 0.2, 1.5); 
 
         function createFlower(x, y) {
             const flowerGroup = new THREE.Group();
-            
-            // Randomize color and scale
             const colorHex = brandColors[Math.floor(Math.random() * brandColors.length)];
-            const targetScale = 0.8 + Math.random() * 0.7;
+            const targetScale = 0.6 + Math.random() * 0.9; // More varied sizes
 
-            // Center
             const centerMat = new THREE.MeshStandardMaterial({ color: 0xFFC107, roughness: 0.4 });
             const center = new THREE.Mesh(centerGeo, centerMat);
             flowerGroup.add(center);
 
-            // Petals (5 petals around center)
             const petalMat = new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.3 });
-            for(let i=0; i<5; i++) {
+            const numPetals = Math.floor(Math.random() * 5) + 4; // 4 to 8 petals
+
+            for(let i=0; i<numPetals; i++) {
                 const petal = new THREE.Mesh(petalGeo, petalMat);
-                const angle = (i / 5) * Math.PI * 2;
+                const angle = (i / numPetals) * Math.PI * 2;
                 petal.position.x = Math.cos(angle) * 0.6;
                 petal.position.y = Math.sin(angle) * 0.6;
                 petal.rotation.z = angle;
-                // Add a slight tilt to the petal
                 petal.rotation.x = 0.2; 
                 flowerGroup.add(petal);
             }
 
             flowerGroup.position.set(x, y, 0);
-            flowerGroup.scale.set(0, 0, 0); // Start tiny for pop-in animation
-            
-            // Random spin
+            flowerGroup.scale.set(0, 0, 0); 
             flowerGroup.rotation.z = Math.random() * Math.PI;
 
             scene.add(flowerGroup);
-            
+
             flowers.push({
                 mesh: flowerGroup,
                 targetScale: targetScale,
+                currentScale: 0,
                 age: 0,
-                state: 'growing' // growing, blooming, shrinking
+                spinVelocity: 0,
+                baseRotation: flowerGroup.rotation.z,
+                state: 'growing' 
             });
         }
 
-        // Firefly trails for extra magic
         const fireflyGeo = new THREE.SphereGeometry(0.08, 8, 8);
-        for(let i=0; i<80; i++) {
+        for(let i=0; i<120; i++) { // Increased fireflies
             const mat = new THREE.MeshBasicMaterial({ color: 0xFFFF88, transparent: true, blending: THREE.AdditiveBlending });
             const fly = new THREE.Mesh(fireflyGeo, mat);
             fly.visible = false;
@@ -242,15 +240,17 @@
             fireflies.push({ mesh: fly, life: 0, vel: new THREE.Vector3() });
         }
 
-        function spawnFireflies(x, y) {
+        function spawnFireflies(x, y, count = 1) {
+            let spawned = 0;
             for(let i=0; i<fireflies.length; i++) {
                 if(fireflies[i].life <= 0) {
                     const fly = fireflies[i];
                     fly.mesh.position.set(x + (Math.random()-0.5)*2, y + (Math.random()-0.5)*2, 0.5);
                     fly.mesh.visible = true;
-                    fly.life = 1.0;
-                    fly.vel.set((Math.random()-0.5)*0.05, Math.random()*0.08 + 0.02, (Math.random()-0.5)*0.05); // Float up
-                    break; 
+                    fly.life = 1.0 + Math.random() * 0.5;
+                    fly.vel.set((Math.random()-0.5)*0.1, Math.random()*0.1 + 0.05, (Math.random()-0.5)*0.1); 
+                    spawned++;
+                    if(spawned >= count) break; 
                 }
             }
         }
@@ -269,7 +269,6 @@
         let prevFrame = null;
         let currentStream = null;
 
-        // Wall dimensions for mapping screen coords to 3D space
         const wallWidth = 35;
         const wallHeight = 22;
 
@@ -310,6 +309,7 @@
 
             mCtx.drawImage(video, 0, 0, GRID_W, GRID_H);
             const currentFrame = mCtx.getImageData(0, 0, GRID_W, GRID_H).data;
+            let totalMotion = 0;
 
             if (prevFrame) {
                 for (let y = 0; y < GRID_H; y+=2) { 
@@ -321,27 +321,30 @@
                         const bDiff = Math.abs(currentFrame[i+2] - prevFrame[i+2]);
 
                         if (rDiff + gDiff + bDiff > config.motionSensitivity) {
-                            
-                            // Hide intro message on first move
+                            totalMotion++;
                             if(!hasStarted) {
                                 hasStarted = true;
                                 document.getElementById('center-message').style.opacity = 0;
                             }
 
-                            // Convert to 3D world coordinates
-                            const normX = (1 - (x / GRID_W)) * 2 - 1; // Mirrored
+                            const normX = (1 - (x / GRID_W)) * 2 - 1; 
                             const normY = -( (y / GRID_H) * 2 - 1 );
-                            
                             const worldX = normX * (wallWidth / 2);
                             const worldY = normY * (wallHeight / 2);
 
-                            // Check distance to existing flowers to prevent overcrowding
                             let tooClose = false;
                             for(let f of flowers) {
                                 const dist = Math.hypot(f.mesh.position.x - worldX, f.mesh.position.y - worldY);
-                                if(dist < config.flowerDensity && f.state !== 'shrinking') {
+                                
+                                // DYNAMIC INTERACTION: React to touch if already grown
+                                if(dist < config.flowerDensity * 1.5 && f.state === 'blooming') {
+                                    f.spinVelocity = 0.3; // Spin the flower
+                                    f.currentScale = f.targetScale * 1.3; // Pop the scale up temporarily
+                                    f.age = 0; // Reset lifespan so kids can keep it alive
+                                    if(Math.random() > 0.8) spawnFireflies(worldX, worldY, 3); // Dust explosion
                                     tooClose = true;
-                                    break;
+                                } else if (dist < config.flowerDensity && f.state !== 'shrinking') {
+                                    tooClose = true;
                                 }
                             }
 
@@ -349,15 +352,21 @@
                                 createFlower(worldX, worldY);
                             }
 
-                            // Spawn magic dust randomly on movement
                             if(Math.random() > 0.7) {
-                                spawnFireflies(worldX, worldY);
+                                spawnFireflies(worldX, worldY, 1);
                             }
                         }
                     }
                 }
             }
             prevFrame = new Uint8ClampedArray(currentFrame);
+            
+            // Generate wind based on total motion this frame
+            if (totalMotion > 10) {
+                targetWind = Math.min(totalMotion * 0.005, 0.5); 
+            } else {
+                targetWind = config.windStrength;
+            }
         }
 
         // --- Animation Loop ---
@@ -365,35 +374,42 @@
             requestAnimationFrame(animate);
             checkMotion();
 
-            // Animate Flowers (The Looping Garden Logic)
+            // Smooth global wind
+            globalWind += (targetWind - globalWind) * 0.05;
+
+            // Animate Flowers
             for(let i = flowers.length - 1; i >= 0; i--) {
                 let f = flowers[i];
                 f.age++;
 
-                if(f.state === 'growing') {
-                    // Pop up scale
-                    f.mesh.scale.x += (f.targetScale - f.mesh.scale.x) * 0.1;
-                    f.mesh.scale.y += (f.targetScale - f.mesh.scale.y) * 0.1;
-                    f.mesh.scale.z += (f.targetScale - f.mesh.scale.z) * 0.1;
-                    f.mesh.rotation.z += 0.02; // Twist as it grows
+                // Apply wind and spin mechanics
+                f.spinVelocity *= 0.92; // Friction
+                f.baseRotation += f.spinVelocity;
+                f.mesh.rotation.z = f.baseRotation + Math.sin(Date.now() * 0.002 + f.mesh.position.x) * globalWind;
 
-                    if(f.targetScale - f.mesh.scale.x < 0.01) f.state = 'blooming';
+                if(f.state === 'growing') {
+                    f.currentScale += (f.targetScale - f.currentScale) * 0.1;
+                    f.mesh.scale.set(f.currentScale, f.currentScale, f.currentScale);
+
+                    if(f.targetScale - f.currentScale < 0.01) f.state = 'blooming';
                 } 
                 else if (f.state === 'blooming') {
-                    // Gentle breathing animation
+                    // Gentle breathing + return to target scale if it was popped by interaction
                     const breath = Math.sin(f.age * 0.05) * 0.05;
-                    f.mesh.scale.set(f.targetScale + breath, f.targetScale + breath, f.targetScale + breath);
+                    f.currentScale += (f.targetScale - f.currentScale) * 0.1; 
+                    const finalScale = f.currentScale + breath;
+                    f.mesh.scale.set(finalScale, finalScale, finalScale);
 
                     if(f.age > config.gardenLifespan) f.state = 'shrinking';
                 }
                 else if (f.state === 'shrinking') {
-                    // Shrink and spin away
-                    f.mesh.scale.multiplyScalar(0.9);
-                    f.mesh.rotation.z -= 0.05;
-                    
-                    if(f.mesh.scale.x < 0.05) {
+                    f.currentScale *= 0.9;
+                    f.mesh.scale.set(f.currentScale, f.currentScale, f.currentScale);
+                    f.baseRotation -= 0.05;
+
+                    if(f.currentScale < 0.05) {
                         scene.remove(f.mesh);
-                        flowers.splice(i, 1); // Remove from array to free up space
+                        flowers.splice(i, 1); 
                     }
                 }
             }
@@ -402,11 +418,12 @@
             for(let fly of fireflies) {
                 if(fly.life > 0) {
                     fly.life -= 0.015;
+                    // Apply global wind to fireflies too
+                    fly.vel.x += globalWind * 0.01;
                     fly.mesh.position.add(fly.vel);
-                    // Add slight sway
                     fly.mesh.position.x += Math.sin(Date.now() * 0.005 + fly.life * 10) * 0.02;
                     fly.mesh.material.opacity = fly.life;
-                    
+
                     if(fly.life <= 0) fly.mesh.visible = false;
                 }
             }
