@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BxCM Polished Interactive Meadow</title>
+    <title>BxCM AI-Tracked Interactive Meadow</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Quicksand:wght@600;700&display=swap');
 
@@ -13,26 +13,42 @@
 
         /* UI Overlays */
         #ui-overlay {
-            position: absolute; top: 20px; left: 20px; color: white; z-index: 10; pointer-events: none;
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            z-index: 10;
+            pointer-events: none;
         }
 
         .bxcm-logo {
-            font-size: 1.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 2px;
-            margin-bottom: 10px; text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
-            background: rgba(255,255,255,0.2); backdrop-filter: blur(5px);
-            padding: 10px 20px; border-radius: 50px; display: inline-block;
+            font-size: 1.8rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            background: rgba(255,255,255,0.2);
+            backdrop-filter: blur(5px);
+            padding: 10px 20px;
+            border-radius: 50px;
+            display: inline-block;
         }
 
         .c-y { color: #FFC107; } .c-o { color: #FF5722; } .c-m { color: #E91E63; } .c-g { color: #4CAF50; } .c-b { color: #2196F3; }
 
         #admin-panel {
-            background: rgba(0,0,0,0.7); padding: 15px; border-radius: 8px; pointer-events: auto; max-width: 320px; margin-top: 15px;
+            background: rgba(0,0,0,0.7);
+            padding: 15px;
+            border-radius: 8px;
+            pointer-events: auto;
+            max-width: 320px;
+            margin-top: 15px;
         }
 
         button {
             padding: 10px; font-size: 1rem; border-radius: 4px; margin-top: 10px; width: 100%;
             background: #E91E63; color: white; border: none; cursor: pointer; font-family: 'Quicksand', sans-serif; font-weight: 600;
-            transition: background 0.3s;
         }
         button:hover { background: #FF5722; }
 
@@ -48,6 +64,7 @@
         }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
+        /* Hidden elements */
         .hidden { display: none !important; }
     </style>
 
@@ -59,7 +76,8 @@
     <script type="importmap">
         {
             "imports": {
-                "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "lil-gui": "https://unpkg.com/lil-gui@0.19.1/dist/lil-gui.esm.min.js"
             }
         }
     </script>
@@ -68,8 +86,8 @@
 
     <div id="loading-screen">
         <div class="spinner"></div>
-        <div>Initializing Vision Sensors...</div>
-        <div style="font-size: 1.2rem; margin-top: 10px;">Please step back and allow camera access.</div>
+        <div>Initializing Tracking Sensors...</div>
+        <div style="font-size: 1.2rem; margin-top: 10px;">Please allow camera access.</div>
     </div>
 
     <div id="ui-overlay">
@@ -81,117 +99,100 @@
         </div>
     </div>
 
+    <!-- Hidden Video/Canvas for MediaPipe -->
     <video id="input_video" class="hidden" autoplay playsinline></video>
     <canvas id="cutout_canvas" class="hidden"></canvas>
 
     <script type="module">
         import * as THREE from 'three';
 
-        // --- 1. CORE SETUP ---
+        // --- 1. THREE.JS SCENE SETUP ---
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x7EC8E3); // Soft sky blue
-        scene.fog = new THREE.FogExp2(0x7EC8E3, 0.012);
+        scene.background = new THREE.Color(0x87CEEB); 
+        scene.fog = new THREE.FogExp2(0x87CEEB, 0.012);
 
-        // Adjusted camera to see floor clearly
-        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 250);
-        camera.position.set(0, 15, 60); 
-        camera.lookAt(0, 10, 0);
+        const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 200);
+        camera.position.set(0, 12, 35); 
+        camera.lookAt(0, 5, 0);
 
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
         document.body.appendChild(renderer.domElement);
 
-        const hemiLight = new THREE.HemisphereLight(0xffffff, 0x666666, 0.9);
+        // Lights
+        const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.9);
         scene.add(hemiLight);
-        const dirLight = new THREE.DirectionalLight(0xfff5e6, 1.0);
-        dirLight.position.set(20, 40, 20);
+        const dirLight = new THREE.DirectionalLight(0xffeedd, 1.2);
+        dirLight.position.set(20, 40, 15);
         scene.add(dirLight);
 
-        // --- 2. LAYERS & OBJECTS ---
-        
-        // [LAYER 1]: Player Silhouette (Z = -45)
-        const cutoutCanvas = document.getElementById('cutout_canvas');
-        const cutoutCtx = cutoutCanvas.getContext('2d');
-        const cutoutTex = new THREE.CanvasTexture(cutoutCanvas);
-        cutoutTex.colorSpace = THREE.SRGBColorSpace;
+        // --- 2. SCENE OBJECTS ---
 
-        const silhouetteGeo = new THREE.PlaneGeometry(120, 90); 
-        const silhouetteMat = new THREE.MeshBasicMaterial({
-            map: cutoutTex, transparent: true, side: THREE.DoubleSide, depthWrite: false
-        });
-        const silhouetteMesh = new THREE.Mesh(silhouetteGeo, silhouetteMat);
-        silhouetteMesh.position.set(0, 15, -45); 
-        scene.add(silhouetteMesh);
-
-
-        // [LAYER 2]: Sky Elements (Z = -30)
+        // --- Sky Objects (Z = -20) ---
         const skyGroup = new THREE.Group();
-        skyGroup.position.set(0, 30, -30);
+        skyGroup.position.set(0, 22, -20);
         scene.add(skyGroup);
 
-        // -- The Sun --
-        const sunGroup = new THREE.Group();
-        sunGroup.position.set(-30, 5, 0);
-        skyGroup.add(sunGroup);
-
-        const sunGeo = new THREE.CircleGeometry(6, 32);
-        const sunMat = new THREE.MeshBasicMaterial({ color: 0xFFD54F, side: THREE.DoubleSide });
+        // Sun
+        const sunGeo = new THREE.CircleGeometry(8, 32);
+        const sunMat = new THREE.MeshBasicMaterial({ color: 0xFFEB3B, side: THREE.DoubleSide });
         const sun = new THREE.Mesh(sunGeo, sunMat);
-        sunGroup.add(sun);
-        
-        // Sunbeams (Particles)
-        const beamGeo = new THREE.BufferGeometry();
-        const beamCount = 100;
-        const beamPos = new Float32Array(beamCount * 3);
-        const beamVel = [];
-        for(let i=0; i<beamCount; i++) { 
-            beamPos[i*3] = 0; beamPos[i*3+1] = -100; beamPos[i*3+2] = 0; 
-            beamVel.push(new THREE.Vector3()); 
+        sun.position.set(-25, 5, 0);
+        skyGroup.add(sun);
+        let sunInteraction = 0;
+        let sunInteractionTarget = 0;
+
+        // Sun Sparkles
+        const sparkleGeo = new THREE.BufferGeometry();
+        const sparkleCount = 100;
+        const sparklePos = new Float32Array(sparkleCount * 3);
+        const sparkleVel = [];
+        for(let i=0; i<sparkleCount; i++) {
+            sparklePos[i*3+1] = -100; // Hidden initially
+            sparkleVel.push(new THREE.Vector3());
         }
-        beamGeo.setAttribute('position', new THREE.BufferAttribute(beamPos, 3));
-        const beamMat = new THREE.PointsMaterial({ color: 0xFFE082, size: 1.5, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending });
-        const beamSys = new THREE.Points(beamGeo, beamMat);
-        sunGroup.add(beamSys);
-        
-        let targetSunScale = 1;
-        let currentSunScale = 1;
-        let bIdx = 0;
+        sparkleGeo.setAttribute('position', new THREE.BufferAttribute(sparklePos, 3));
+        const sparkleMat = new THREE.PointsMaterial({ color: 0xFFD700, size: 0.8, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending });
+        const sparkleSystem = new THREE.Points(sparkleGeo, sparkleMat);
+        skyGroup.add(sparkleSystem);
 
-        // -- The Cloud & Rain --
+        // Cloud
         const cloudGroup = new THREE.Group();
-        cloudGroup.position.set(30, 5, 0);
-        skyGroup.add(cloudGroup);
-        
+        cloudGroup.position.set(20, 5, 0);
         const cloudMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 });
-        const puff1 = new THREE.Mesh(new THREE.SphereGeometry(4.5), cloudMat);
-        const puff2 = new THREE.Mesh(new THREE.SphereGeometry(3.5), cloudMat); puff2.position.set(4, -1, 0);
-        const puff3 = new THREE.Mesh(new THREE.SphereGeometry(3.5), cloudMat); puff3.position.set(-4, -1, 0);
-        cloudGroup.add(puff1, puff2, puff3);
+        const puffMain = new THREE.Mesh(new THREE.SphereGeometry(4), cloudMat);
+        const puffLeft = new THREE.Mesh(new THREE.SphereGeometry(3), cloudMat); puffLeft.position.set(-4, -1, 0);
+        const puffRight = new THREE.Mesh(new THREE.SphereGeometry(3), cloudMat); puffRight.position.set(4, -1, 0);
+        cloudGroup.add(puffMain, puffLeft, puffRight);
+        skyGroup.add(cloudGroup);
+        let cloudInteractionTarget = 0;
+        let cloudInteraction = 0;
 
+        // Rain
         const rainGeo = new THREE.BufferGeometry();
-        const rainCount = 300;
+        const rainCount = 250;
         const rainPos = new Float32Array(rainCount * 3);
         for(let i=0; i<rainCount; i++) {
-            rainPos[i*3] = (Math.random()-0.5)*12;
-            rainPos[i*3+1] = -Math.random()*25;
+            rainPos[i*3] = (Math.random()-0.5)*15;
+            rainPos[i*3+1] = -Math.random()*20; 
             rainPos[i*3+2] = (Math.random()-0.5)*4;
         }
         rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPos, 3));
         const rainMat = new THREE.PointsMaterial({ color: 0x42A5F5, size: 0.6, transparent: true, opacity: 0 });
         const rainSystem = new THREE.Points(rainGeo, rainMat);
         cloudGroup.add(rainSystem);
-        
-        let rainTimer = 0;
-        let cloudSpread = 0;
+        let isRaining = false;
+        let rainIntensity = 0;
 
-        // -- Rainbow --
-        const rainbowGeo = new THREE.TorusGeometry(25, 2, 16, 100, Math.PI);
+        // Rainbow
+        const rainbowGeo = new THREE.TorusGeometry(20, 1.5, 16, 100, Math.PI);
         const rainbowMat = new THREE.MeshBasicMaterial({ 
             color: 0xffffff, transparent: true, opacity: 0, 
             map: createRainbowTexture(), side: THREE.DoubleSide 
         });
         const rainbow = new THREE.Mesh(rainbowGeo, rainbowMat);
-        rainbow.position.set(0, -10, -5);
+        rainbow.position.set(0, -5, -5);
         skyGroup.add(rainbow);
 
         function createRainbowTexture() {
@@ -204,9 +205,37 @@
             ctx.fillStyle = grad; ctx.fillRect(0,0,256,1);
             return new THREE.CanvasTexture(canvas);
         }
-        let rainbowTargetOpacity = 0;
 
-        // [LAYER 3]: The Grass (Z = -15 to +15)
+        // --- Player Silhouette (Z = -30) ---
+        const cutoutCanvas = document.getElementById('cutout_canvas');
+        const cutoutCtx = cutoutCanvas.getContext('2d');
+        const cutoutTex = new THREE.CanvasTexture(cutoutCanvas);
+        cutoutTex.colorSpace = THREE.SRGBColorSpace;
+
+        const silhouetteGeo = new THREE.PlaneGeometry(90, 65);
+        const silhouetteMat = new THREE.MeshBasicMaterial({
+            map: cutoutTex, transparent: true, side: THREE.DoubleSide, depthWrite: false
+        });
+        const silhouetteMesh = new THREE.Mesh(silhouetteGeo, silhouetteMat);
+        silhouetteMesh.position.set(0, 15, -30); // Behind grass and flower
+        scene.add(silhouetteMesh);
+
+
+        // --- Visual Tracking Indicators (Z = 15, FRONT) ---
+        const trackerGeo = new THREE.SphereGeometry(1.5, 32, 32);
+        const trackerMat = new THREE.MeshBasicMaterial({ color: 0x00FF00, transparent: true, opacity: 0.7, depthTest: false });
+
+        const leftHandTracker = new THREE.Mesh(trackerGeo, trackerMat);
+        const rightHandTracker = new THREE.Mesh(trackerGeo, trackerMat);
+        const leftFootTracker = new THREE.Mesh(trackerGeo, new THREE.MeshBasicMaterial({ color: 0xFF5722, opacity: 0.7, depthTest: false }));
+        const rightFootTracker = new THREE.Mesh(trackerGeo, new THREE.MeshBasicMaterial({ color: 0xFF5722, opacity: 0.7, depthTest: false }));
+
+        // Keep them fixed in front so they are visible over the silhouette
+        leftHandTracker.position.z = 15; rightHandTracker.position.z = 15;
+        leftFootTracker.position.z = 15; rightFootTracker.position.z = 15;
+        scene.add(leftHandTracker, rightHandTracker, leftFootTracker, rightFootTracker);
+
+        // --- Grass System (Z = -10 to +10) ---
         const mapSize = 256;
         const windCanvas = document.createElement('canvas');
         windCanvas.width = mapSize; windCanvas.height = mapSize;
@@ -214,13 +243,10 @@
         const windTex = new THREE.CanvasTexture(windCanvas);
 
         const numGrass = 40000;
-        const grassGeo = new THREE.PlaneGeometry(0.2, 4.0, 1, 4);
-        grassGeo.translate(0, 2.0, 0);
+        const grassGeo = new THREE.PlaneGeometry(0.2, 4.5, 1, 4);
+        grassGeo.translate(0, 2.25, 0);
 
-        const grassMat = new THREE.MeshStandardMaterial({ 
-            color: 0x4CAF50, // Base green
-            side: THREE.DoubleSide, roughness: 0.9 
-        });
+        const grassMat = new THREE.MeshStandardMaterial({ color: 0x55aa55, side: THREE.DoubleSide, roughness: 0.8 });
         const grassParams = { time: { value: 0 }, windMap: { value: windTex } };
 
         grassMat.onBeforeCompile = (shader) => {
@@ -233,9 +259,9 @@
                 #include <begin_vertex>
                 vMyUv = uv;
                 vec3 instPos = vec3(instanceMatrix[3][0], instanceMatrix[3][1], instanceMatrix[3][2]);
-                vec2 mapUv = vec2((instPos.x + 50.0) / 100.0, (instPos.z + 15.0) / 30.0);
+                vec2 mapUv = vec2((instPos.x + 40.0) / 80.0, (instPos.z + 10.0) / 20.0);
                 float windForce = texture2D(windMap, mapUv).r;
-                float naturalWind = sin(time * 1.5 + instPos.x * 0.3) * 0.2;
+                float naturalWind = sin(time * 2.0 + instPos.x * 0.5) * 0.15;
                 if (position.y > 0.0) {
                     transformed.x += naturalWind * position.y;
                     transformed.x += windForce * 3.0 * position.y;
@@ -245,92 +271,73 @@
             shader.fragmentShader = `varying vec2 vMyUv;` + shader.fragmentShader;
             shader.fragmentShader = shader.fragmentShader.replace(`#include <color_fragment>`, `
                 #include <color_fragment>
-                vec3 rootColor = vec3(0.01, 0.20, 0.02);
-                vec3 tipColor = vec3(0.3, 0.8, 0.2);
-                diffuseColor.rgb = mix(rootColor, diffuseColor.rgb * tipColor, vMyUv.y);
+                vec3 rootColor = vec3(0.01, 0.2, 0.02);
+                diffuseColor.rgb = mix(rootColor, diffuseColor.rgb, vMyUv.y);
             `);
         };
 
         const grassMesh = new THREE.InstancedMesh(grassGeo, grassMat, numGrass);
         const dummy = new THREE.Object3D();
         for(let i = 0; i < numGrass; i++) {
-            dummy.position.set((Math.random() - 0.5) * 100, 0, (Math.random() - 0.5) * 30);
+            dummy.position.set((Math.random() - 0.5) * 90, -1, (Math.random() - 0.5) * 20);
             dummy.rotation.y = Math.random() * Math.PI;
-            dummy.scale.setScalar(0.5 + Math.random() * 0.7);
+            dummy.scale.setScalar(0.5 + Math.random() * 0.6);
             dummy.updateMatrix();
             grassMesh.setMatrixAt(i, dummy.matrix);
+            grassMesh.setColorAt(i, new THREE.Color().setHSL(0.28 + Math.random() * 0.08, 0.8, 0.25 + Math.random() * 0.2));
         }
         scene.add(grassMesh);
 
-        // [LAYER 4]: Giant Interactive Flower (Z = 15)
+        // --- Giant Flower (Z = 12, FRONT) ---
         const flowerGroup = new THREE.Group();
-        flowerGroup.position.set(0, 0, 15); 
+        flowerGroup.position.set(0, -2, 12); 
         scene.add(flowerGroup);
 
-        const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.6, 15, 16).translate(0, 7.5, 0), new THREE.MeshStandardMaterial({ color: 0x2E7D32 }));
+        const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.8, 12, 16).translate(0, 6, 0), new THREE.MeshStandardMaterial({ color: 0x4CAF50 }));
         flowerGroup.add(stem);
 
         const flowerHead = new THREE.Group();
-        flowerHead.position.y = 15;
+        flowerHead.position.y = 12;
         flowerGroup.add(flowerHead);
 
         const petalShape = new THREE.Shape();
-        petalShape.moveTo(0, 0); petalShape.bezierCurveTo(4, 4, 4.5, 10, 0, 12); petalShape.bezierCurveTo(-4.5, 10, -4, 4, 0, 0);
+        petalShape.moveTo(0, 0); petalShape.bezierCurveTo(3, 3, 3.5, 8, 0, 10); petalShape.bezierCurveTo(-3.5, 8, -3, 3, 0, 0);
         const petalGeo = new THREE.ShapeGeometry(petalShape);
         const petalMat = new THREE.MeshStandardMaterial({ color: 0xE91E63, side: THREE.DoubleSide });
 
         const petals = [];
-        for (let i = 0; i < 10; i++) {
+        for (let i = 0; i < 12; i++) {
             const petal = new THREE.Mesh(petalGeo, petalMat);
-            petal.rotation.y = (i / 10) * Math.PI * 2;
+            petal.rotation.y = (i / 12) * Math.PI * 2;
             petal.userData.baseRotY = petal.rotation.y;
-            petal.rotation.x = 0.3; // Very closed initially
+            petal.rotation.x = 0.5; // closed
             flowerHead.add(petal); petals.push(petal);
         }
-        const center = new THREE.Mesh(new THREE.SphereGeometry(3, 32, 16).scale(1, 0.4, 1), new THREE.MeshStandardMaterial({ color: 0xFFC107 }));
+        const center = new THREE.Mesh(new THREE.SphereGeometry(2.5, 32, 16).scale(1, 0.4, 1), new THREE.MeshStandardMaterial({ color: 0xFFC107 }));
         flowerHead.add(center);
 
-        let targetFlowerBloom = 0;
-        let currentFlowerBloom = 0;
+        let flowerInteraction = 0;
+        let flowerInteractionTarget = 0;
 
+        // Pollen System
         const pollenGeo = new THREE.BufferGeometry();
-        const pollenPos = new Float32Array(200 * 3);
+        const pollenPos = new Float32Array(300 * 3);
         const pollenVel = [];
-        for(let i=0; i<200; i++) { pollenPos[i*3+1] = -100; pollenVel.push(new THREE.Vector3()); }
+        for(let i=0; i<300; i++) { pollenPos[i*3+1] = -100; pollenVel.push(new THREE.Vector3()); }
         pollenGeo.setAttribute('position', new THREE.BufferAttribute(pollenPos, 3));
-        const pollenMat = new THREE.PointsMaterial({ color: 0xFFD700, size: 2.5, transparent: true, blending: THREE.AdditiveBlending });
+        const pollenMat = new THREE.PointsMaterial({ color: 0xFFD700, size: 2.0, transparent: true, blending: THREE.AdditiveBlending });
         const pollenSys = new THREE.Points(pollenGeo, pollenMat);
         scene.add(pollenSys);
         let pIdx = 0;
 
-        // [LAYER 5]: Sonic Rings
-        const ringGeo = new THREE.RingGeometry(1, 1.5, 32);
-        const ringMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, side: THREE.DoubleSide });
-        const rings = [];
-        for(let i=0; i<4; i++) {
-            let r = new THREE.Mesh(ringGeo, ringMat.clone());
-            r.position.y = -100;
-            scene.add(r);
-            rings.push({ mesh: r, active: false, scale: 1 });
-        }
-        let ringTimer = 0;
-
-        // --- 3. MEDIAPIPE TRACKING ---
+        // --- 3. MEDIAPIPE AI TRACKING ---
         const videoElement = document.getElementById('input_video');
         let aiInitialized = false;
 
-        function getThreeCoords(landmark, zDepth) {
-            // Mapping viewport to 3D. Mirror X.
-            const x = (0.5 - landmark.x) * 110; 
-            const y = (1 - landmark.y) * 75 - 10; 
-            return new THREE.Vector3(x, y, zDepth);
-        }
-
-        function spawnRing(pos) {
-            let ring = rings.find(r => !r.active);
-            if(ring) {
-                ring.active = true; ring.mesh.position.copy(pos); ring.scale = 1; ring.mesh.material.opacity = 0.8;
-            }
+        function getThreeCoords(landmark, targetZ) {
+            const x = (1 - landmark.x - 0.5) * 80;
+            const y = -(landmark.y - 0.5) * 60 + 15;
+            return new THREE.Vector3(x, y, targetZ);
         }
 
         function onPoseResults(results) {
@@ -341,12 +348,14 @@
             }
 
             if (results.segmentationMask && cutoutCanvas.width === 0) {
-                cutoutCanvas.width = videoElement.videoWidth; cutoutCanvas.height = videoElement.videoHeight;
+                cutoutCanvas.width = videoElement.videoWidth;
+                cutoutCanvas.height = videoElement.videoHeight;
             }
             if (results.segmentationMask) {
                 cutoutCtx.save();
                 cutoutCtx.clearRect(0, 0, cutoutCanvas.width, cutoutCanvas.height);
-                cutoutCtx.translate(cutoutCanvas.width, 0); cutoutCtx.scale(-1, 1);
+                cutoutCtx.translate(cutoutCanvas.width, 0);
+                cutoutCtx.scale(-1, 1);
                 cutoutCtx.drawImage(results.segmentationMask, 0, 0, cutoutCanvas.width, cutoutCanvas.height);
                 cutoutCtx.globalCompositeOperation = 'source-in';
                 cutoutCtx.drawImage(results.image, 0, 0, cutoutCanvas.width, cutoutCanvas.height);
@@ -357,158 +366,173 @@
             if (results.poseLandmarks) {
                 const lm = results.poseLandmarks;
 
-                // Hands and Feet mapped to corresponding depths
-                const w1_sky = getThreeCoords(lm[15], -30); 
-                const w2_sky = getThreeCoords(lm[16], -30);
-                const w1_flower = getThreeCoords(lm[15], 15);
-                const w2_flower = getThreeCoords(lm[16], 15);
-                const f1 = getThreeCoords(lm[27], 0); 
+                // Virtual interaction points mapping slightly behind visual orbs
+                const w1 = getThreeCoords(lm[15], 10);
+                const w2 = getThreeCoords(lm[16], 10);
+                const f1 = getThreeCoords(lm[27], 0);
                 const f2 = getThreeCoords(lm[28], 0);
 
-                // Grass Wind (Feet)
+                leftHandTracker.position.x = w1.x; leftHandTracker.position.y = w1.y;
+                rightHandTracker.position.x = w2.x; rightHandTracker.position.y = w2.y;
+                leftFootTracker.position.x = f1.x; leftFootTracker.position.y = f1.y;
+                rightFootTracker.position.x = f2.x; rightFootTracker.position.y = f2.y;
+
+                // --- Grass Interaction ---
                 [f1, f2].forEach(foot => {
-                    const tx = ((foot.x + 50) / 100) * mapSize;
-                    const ty = ((foot.z + 15) / 30) * mapSize;
+                    const tx = ((foot.x + 40) / 80) * mapSize;
+                    const ty = ((foot.z + 10) / 20) * mapSize;
                     windCtx.beginPath();
-                    const g = windCtx.createRadialGradient(tx, ty, 0, tx, ty, 25);
+                    const g = windCtx.createRadialGradient(tx, ty, 0, tx, ty, 20);
                     g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(1, 'rgba(255,255,255,0)');
                     windCtx.fillStyle = g;
-                    windCtx.arc(tx, ty, 25, 0, Math.PI*2); windCtx.fill();
+                    windCtx.arc(tx, ty, 20, 0, Math.PI*2); windCtx.fill();
                 });
 
-                // Sun Interaction
-                const sunWorld = new THREE.Vector3(-30, 35, -30);
-                if (w1_sky.distanceTo(sunWorld) < 18 || w2_sky.distanceTo(sunWorld) < 18) {
-                    targetSunScale = 1.3;
-                    // Spawn Sunbeams
-                    if(Math.random() > 0.5) {
-                        beamPos[bIdx*3] = sunWorld.x + (Math.random()-0.5)*10;
-                        beamPos[bIdx*3+1] = sunWorld.y;
-                        beamPos[bIdx*3+2] = sunWorld.z + 2;
-                        beamVel[bIdx].set((Math.random()-0.5)*0.2, -Math.random()*0.4 - 0.2, (Math.random()-0.5)*0.2);
-                        bIdx = (bIdx + 1) % beamCount;
-                    }
-                } else {
-                    targetSunScale = 1.0;
+                // --- Sky Interaction (Sun & Cloud) ---
+                // Mapped to a larger hitbox zone
+                const leftZoneX = -20;
+                const rightZoneX = 20;
+                const topZoneY = 20;
+
+                // Cloud
+                if ((w1.x > 10 && w1.y > topZoneY) || (w2.x > 10 && w2.y > topZoneY)) {
+                    cloudInteractionTarget = 1;
+                    if(!isRaining) isRaining = true;
                 }
 
-                // Cloud Interaction
-                const cloudWorld = new THREE.Vector3(30, 35, -30);
-                if (w1_sky.distanceTo(cloudWorld) < 18 || w2_sky.distanceTo(cloudWorld) < 18) {
-                    rainTimer = 300; // ~5 seconds of rain
+                // Sun
+                if ((w1.x < -10 && w1.y > topZoneY) || (w2.x < -10 && w2.y > topZoneY)) {
+                    sunInteractionTarget = 1;
+                } else {
+                    sunInteractionTarget = 0;
                 }
 
-                // Two-Handed Flower Bloom
-                const flowerPos = new THREE.Vector3(0, 15, 15);
-                if (w1_flower.distanceTo(flowerPos) < 20 && w2_flower.distanceTo(flowerPos) < 20) {
-                    targetFlowerBloom = 1;
-                } else {
-                    targetFlowerBloom = 0;
-                }
+                // --- Giant Flower Interaction ---
+                // Require BOTH hands relatively close to the center for FULL bloom
+                let hand1Close = Math.abs(w1.x) < 15 && w1.y < 20;
+                let hand2Close = Math.abs(w2.x) < 15 && w2.y < 20;
 
-                // Hands High for Rainbow & Sonic Rings
-                if (lm[15].y < 0.2 && lm[16].y < 0.2) {
-                    rainbowTargetOpacity = 0.9;
-                    if(ringTimer <= 0) {
-                        spawnRing(w1_sky); spawnRing(w2_sky);
-                        ringTimer = 30; // Cooldown
-                    }
+                if (hand1Close && hand2Close) {
+                    flowerInteractionTarget = 1.0; // Both hands - full bloom
+                } else if (hand1Close || hand2Close) {
+                    flowerInteractionTarget = 0.4; // One hand - partial bloom
                 } else {
-                    rainbowTargetOpacity = 0;
+                    flowerInteractionTarget = 0.0;
                 }
-                if(ringTimer > 0) ringTimer--;
             }
         }
 
-        const pose = new Pose({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}` });
+        const pose = new Pose({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
+        });
         pose.setOptions({
-            modelComplexity: 1, smoothLandmarks: true, enableSegmentation: true, 
-            smoothSegmentation: true, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5
+            modelComplexity: 1, 
+            smoothLandmarks: true,
+            enableSegmentation: true,
+            smoothSegmentation: true,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
         });
         pose.onResults(onPoseResults);
 
         const cameraUtils = new Camera(videoElement, {
-            onFrame: async () => { await pose.send({image: videoElement}); }, width: 640, height: 480
+            onFrame: async () => { await pose.send({image: videoElement}); },
+            width: 640, height: 480
         });
         cameraUtils.start();
 
 
-        // --- 4. RENDER LOOP ---
+        // --- 4. RENDER ANIMATION LOOP ---
         function animate() {
             requestAnimationFrame(animate);
             const time = Date.now() * 0.001;
 
-            // Grass Wind Fade
-            windCtx.fillStyle = 'rgba(0,0,0,0.08)';
+            // Fade grass wind
+            windCtx.fillStyle = 'rgba(0,0,0,0.1)';
             windCtx.fillRect(0,0,mapSize,mapSize);
             windTex.needsUpdate = true;
             grassParams.time.value += 0.016;
 
-            // Smooth Sun Animation
-            currentSunScale += (targetSunScale - currentSunScale) * 0.05;
-            sunGroup.scale.setScalar(currentSunScale);
-            
-            const bArr = beamGeo.attributes.position.array;
-            for(let i=0; i<beamCount; i++) {
-                if(bArr[i*3+1] > -20) {
-                    bArr[i*3] += beamVel[i].x; bArr[i*3+1] += beamVel[i].y; bArr[i*3+2] += beamVel[i].z;
-                }
-            }
-            beamGeo.attributes.position.needsUpdate = true;
+            // Smooth interactions
+            sunInteraction += (sunInteractionTarget - sunInteraction) * 0.05;
+            cloudInteraction += (cloudInteractionTarget - cloudInteraction) * 0.02;
+            flowerInteraction += (flowerInteractionTarget - flowerInteraction) * 0.05;
 
-            // Smooth Cloud & Rain Animation
-            if(rainTimer > 0) {
-                rainTimer--; cloudSpread += (1.5 - cloudSpread) * 0.05;
-                rainMat.opacity += (0.8 - rainMat.opacity) * 0.05;
+            // Sun Animation & Sparkles
+            sun.scale.setScalar(1 + sunInteraction * 0.4);
+            sun.material.color.setHex(sunInteraction > 0.5 ? 0xFFB300 : 0xFFEB3B);
+
+            if (sunInteraction > 0.1) {
+                // Drop sparkles
+                const sArr = sparkleGeo.attributes.position.array;
+                if(Math.random() < 0.2) {
+                    sArr[pIdx*3] = sun.position.x + (Math.random()-0.5)*15;
+                    sArr[pIdx*3+1] = sun.position.y + (Math.random()-0.5)*15;
+                    sArr[pIdx*3+2] = sun.position.z + (Math.random()-0.5)*5;
+                    sparkleVel[pIdx].set(0, -Math.random()*0.2 - 0.1, 0);
+                    pIdx = (pIdx + 1) % sparkleCount;
+                }
+                for(let i=0; i<sparkleCount; i++) {
+                    if(sArr[i*3+1] > -50) {
+                        sArr[i*3+1] += sparkleVel[i].y;
+                        sArr[i*3] += Math.sin(time*2 + i)*0.05;
+                    }
+                }
+                sparkleGeo.attributes.position.needsUpdate = true;
+            }
+
+            // Cloud Spreading & Rain
+            puffLeft.position.x = -4 - (cloudInteraction * 3);
+            puffRight.position.x = 4 + (cloudInteraction * 3);
+
+            if(isRaining) {
+                rainIntensity = Math.min(1, rainIntensity + 0.03);
+                rainMat.opacity = rainIntensity;
                 const pos = rainGeo.attributes.position.array;
                 for(let i=0; i<rainCount; i++) {
-                    pos[i*3+1] -= 0.6; // Fall
-                    if(pos[i*3+1] < -20) { pos[i*3+1] = 5; pos[i*3] = (Math.random()-0.5)*15; }
+                    pos[i*3+1] -= 0.6 + Math.random()*0.5;
+                    if(pos[i*3+1] < -20) { pos[i*3+1] = 5; pos[i*3] = (Math.random()-0.5)*18; }
                 }
                 rainGeo.attributes.position.needsUpdate = true;
+
+                if(Math.random() < 0.003) { isRaining = false; cloudInteractionTarget = 0; }
             } else {
-                cloudSpread += (0 - cloudSpread) * 0.05;
-                rainMat.opacity += (0 - rainMat.opacity) * 0.05;
+                rainIntensity = Math.max(0, rainIntensity - 0.02);
+                rainMat.opacity = rainIntensity;
             }
-            puff2.position.x = 4 + cloudSpread; puff3.position.x = -4 - cloudSpread;
 
-            // Smooth Rainbow
-            rainbowMat.opacity += (rainbowTargetOpacity - rainbowMat.opacity) * 0.02;
+            // Rainbow shows up after rain
+            if (!isRaining && rainIntensity < 0.1 && rainbowMat.opacity < 0.8) {
+                rainbowMat.opacity += 0.005; 
+            } else if (isRaining) {
+                rainbowMat.opacity -= 0.05; 
+            }
 
-            // Smooth Sonic Rings
-            rings.forEach(r => {
-                if(r.active) {
-                    r.scale += 0.15; r.mesh.scale.setScalar(r.scale);
-                    r.mesh.material.opacity -= 0.02;
-                    if(r.mesh.material.opacity <= 0) { r.active = false; r.mesh.position.y = -100; }
-                }
-            });
+            // Flower Bloom Animation
+            flowerGroup.rotation.z = Math.sin(time) * 0.05;
+            flowerGroup.scale.setScalar(1.0 + flowerInteraction * 0.3);
 
-            // Smooth Two-Hand Flower Bloom
-            currentFlowerBloom += (targetFlowerBloom - currentFlowerBloom) * 0.04;
-            flowerGroup.rotation.z = Math.sin(time * 0.5) * 0.03; // Gentle sway
-            
-            petals.forEach((petal) => {
-                // Lerp between closed (0.3) and fully wide open (2.0)
-                petal.rotation.x = THREE.MathUtils.lerp(0.3, 2.0, currentFlowerBloom);
+            petals.forEach((petal, i) => {
+                petal.rotation.x = THREE.MathUtils.lerp(0.5, 1.8, flowerInteraction);
                 petal.rotation.x += Math.sin(time * 2 + petal.userData.baseRotY) * 0.05;
             });
 
-            // Burst pollen if open
-            if (currentFlowerBloom > 0.8) {
-                for(let k=0; k<2; k++) {
-                    pollenPos[pIdx*3] = flowerHead.position.x + (Math.random()-0.5)*5;
-                    pollenPos[pIdx*3+1] = flowerHead.position.y + flowerGroup.position.y;
-                    pollenPos[pIdx*3+2] = flowerGroup.position.z + (Math.random()-0.5)*5;
-                    pollenVel[pIdx].set((Math.random()-0.5)*0.15, Math.random()*0.2 + 0.1, (Math.random()-0.5)*0.15);
-                    pIdx = (pIdx + 1) % 200;
+            // Pollen Burst 
+            if (flowerInteraction > 0.8) {
+                for(let k=0; k<3; k++) {
+                    const posA = pollenGeo.attributes.position.array;
+                    posA[pIdx*3] = flowerHead.position.x + (Math.random()-0.5)*4;
+                    posA[pIdx*3+1] = flowerHead.position.y + flowerGroup.position.y;
+                    posA[pIdx*3+2] = flowerGroup.position.z + (Math.random()-0.5)*4;
+                    pollenVel[pIdx].set((Math.random()-0.5)*0.2, Math.random()*0.3 + 0.1, (Math.random()-0.5)*0.2);
+                    pIdx = (pIdx + 1) % 300;
                 }
             }
             const pArr = pollenGeo.attributes.position.array;
-            for(let i=0; i<200; i++) {
+            for(let i=0; i<300; i++) {
                 if(pArr[i*3+1] > -50) {
                     pArr[i*3] += pollenVel[i].x; pArr[i*3+1] += pollenVel[i].y; pArr[i*3+2] += pollenVel[i].z;
-                    pArr[i*3] += Math.sin(time*2+i)*0.02;
+                    pArr[i*3] += Math.sin(time*3+i)*0.03;
                     if(pArr[i*3+1] > 40) pArr[i*3+1] = -100;
                 }
             }
