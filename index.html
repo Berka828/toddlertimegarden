@@ -4,14 +4,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BxCM Giant Interactive Flower</title>
+    <title>BxCM Educational Garden</title>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Quicksand:wght@600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@500;700&display=swap');
 
-        body { margin: 0; overflow: hidden; background: #0f0518; font-family: 'Quicksand', sans-serif; }
+        body { margin: 0; overflow: hidden; background: #87CEEB; font-family: 'Fredoka', sans-serif; }
         canvas { display: block; }
 
-        /* UI Overlays */
+        /* UI Overlay */
         #ui-overlay {
             position: absolute;
             top: 20px;
@@ -22,110 +22,127 @@
         }
 
         .bxcm-logo {
-            font-size: 1.8rem;
+            font-size: 1.5rem;
             font-weight: 700;
             text-transform: uppercase;
             letter-spacing: 2px;
-            margin-bottom: 10px;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
-            background: rgba(255,255,255,0.1);
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.4);
+            background: rgba(255,255,255,0.2);
             backdrop-filter: blur(5px);
-            padding: 10px 20px;
+            padding: 8px 16px;
             border-radius: 50px;
             display: inline-block;
         }
 
-        /* BxCM Brand Colors */
         .c-y { color: #FFC107; }
         .c-o { color: #FF5722; }
         .c-m { color: #E91E63; }
         .c-g { color: #4CAF50; }
         .c-b { color: #2196F3; }
 
-        #camera-settings {
-            background: rgba(0,0,0,0.8);
+        #admin-panel {
+            background: rgba(0,0,0,0.6);
             padding: 15px;
-            border-radius: 8px;
+            border-radius: 12px;
             pointer-events: auto;
-            max-width: 320px;
+            max-width: 300px;
             margin-top: 15px;
-            border: 1px solid rgba(255,255,255,0.2);
+            border: 2px solid rgba(255,255,255,0.3);
         }
 
         select, button {
             padding: 10px;
             font-size: 1rem;
-            border-radius: 4px;
+            border-radius: 8px;
             margin-top: 10px;
             width: 100%;
-            background: #333;
-            color: white;
+            background: white;
+            color: #333;
             border: none;
             cursor: pointer;
-            font-family: 'Quicksand', sans-serif;
-            font-weight: 600;
+            font-family: 'Fredoka', sans-serif;
+            font-weight: 700;
         }
-        
-        button { background: #E91E63; }
-        button:hover { background: #FF5722; }
+
+        button:hover { background: #FFC107; }
 
         #video-container {
             position: absolute;
             bottom: 20px;
-            left: 20px;
-            width: 240px;
-            height: 180px;
-            border: 2px solid rgba(255,255,255,0.5);
-            border-radius: 8px;
+            right: 20px;
+            width: 200px;
+            border: 3px solid white;
+            border-radius: 12px;
             overflow: hidden;
             transform: scaleX(-1);
-            opacity: 0.8;
             z-index: 10;
-            display: none; 
         }
 
-        video { width: 100%; height: 100%; object-fit: cover; }
+        video { width: 100%; height: auto; display: block; }
 
-        /* Welcome Message */
-        #center-message {
+        /* Giant Educational Instructions */
+        #instruction-text {
             position: absolute;
-            top: 20%;
+            top: 15%;
             width: 100%;
             text-align: center;
             color: #fff;
-            font-size: 2.5rem;
-            text-shadow: 0px 5px 15px rgba(0,0,0,0.9);
+            font-size: 3.5rem;
+            font-weight: 700;
+            text-shadow: 0px 4px 10px rgba(0,0,0,0.5);
             pointer-events: none;
             z-index: 20;
-            transition: opacity 1s ease;
+            transition: opacity 0.5s;
         }
 
-        .pulse { animation: pulse 3s infinite; }
+        .bounce { animation: bounce 2s infinite; }
 
-        @keyframes pulse {
-            0% { opacity: 0.8; transform: scale(0.98); }
-            50% { opacity: 1; transform: scale(1.02); }
-            100% { opacity: 0.8; transform: scale(0.98); }
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-15px); }
+        }
+
+        /* Progress Bar for Kids */
+        #progress-container {
+            position: absolute;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 400px;
+            height: 30px;
+            background: rgba(255,255,255,0.4);
+            border-radius: 20px;
+            border: 3px solid white;
+            z-index: 20;
+            overflow: hidden;
+            display: none;
+        }
+
+        #progress-fill {
+            width: 0%;
+            height: 100%;
+            background: #E91E63;
+            transition: width 0.2s;
         }
     </style>
 </head>
 <body>
 
-    <div id="center-message" class="pulse">Step away from the wall to calibrate...<br>Then reach out to touch the Giant Flower!</div>
+    <div id="instruction-text" class="bounce">Step back so the camera can see you!</div>
+
+    <div id="progress-container">
+        <div id="progress-fill"></div>
+    </div>
 
     <div id="ui-overlay">
         <div class="bxcm-logo">
             <span class="c-y">B</span><span class="c-o">R</span><span class="c-m">O</span><span class="c-g">N</span><span class="c-b">X</span> Children's Museum
         </div>
-        <div id="camera-settings">
-            <label for="camera-select">🎥 Select Sensor/Camera:</label>
-            <select id="camera-select">
-                <option value="">Loading cameras...</option>
-            </select>
-            <button id="calibrate-btn">📸 Calibrate Background</button>
-            <div style="font-size: 0.8rem; margin-top: 5px; color: #aaa;">
-                *Click when no one is standing in front of the camera to perfectly cut out the kids' silhouettes!
-            </div>
+        <div id="admin-panel">
+            <label style="color:white; font-size: 0.9rem;">🎥 Camera Setup:</label>
+            <select id="camera-select"><option value="">Loading...</option></select>
+            <button id="fullscreen-btn">Toggle Fullscreen (F)</button>
+            <button id="reset-btn">🔄 Reset Lesson</button>
         </div>
     </div>
 
@@ -133,434 +150,367 @@
         <video id="webcam" autoplay playsinline></video>
     </div>
 
-    <!-- Hidden Canvases for Motion Physics & Background Subtraction -->
+    <!-- Hidden canvas for tracking motion pixels -->
     <canvas id="motion-canvas" style="display:none;"></canvas>
 
     <script type="importmap">
         {
             "imports": {
-                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-                "lil-gui": "https://unpkg.com/lil-gui@0.19.1/dist/lil-gui.esm.min.js"
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
             }
         }
     </script>
 
     <script type="module">
         import * as THREE from 'three';
-        import GUI from 'lil-gui';
 
-        // --- Configuration & State ---
-        const config = {
-            motionSensitivity: 25,
-            bgThreshold: 0.18, // Sensitivity for silhouette cutout
-            showWebcam: false,
-            goFullscreen: () => {
-                if (!document.fullscreenElement) document.documentElement.requestFullscreen();
-                else document.exitFullscreen();
-            }
-        };
+        // --- Game State & Stages ---
+        // 0: Waiting for user, 1: Plant Seed, 2: Water, 3: Sun, 4: Bloom
+        let currentStage = 0; 
+        let stageProgress = 0; // 0 to 100
+        const progressFill = document.getElementById('progress-fill');
+        const progressContainer = document.getElementById('progress-container');
+        const instructionText = document.getElementById('instruction-text');
 
-        const brandColors = [0xFFC107, 0xFF5722, 0xE91E63, 0x4CAF50, 0x2196F3]; 
-        let hasStarted = false;
-
-        // --- Setup Admin GUI ---
-        const gui = new GUI({ title: '🌸 Interaction Admin Panel' });
-        gui.add(config, 'motionSensitivity', 10, 100, 1).name('Motion Tracking Sens.');
-        gui.add(config, 'bgThreshold', 0.05, 0.5, 0.01).name('Silhouette Cutout Sens.');
-        gui.add(config, 'showWebcam').name('Show Webcam Feed').onChange(v => {
-            if (!document.fullscreenElement) document.getElementById('video-container').style.display = v ? 'block' : 'none';
-        });
-        gui.add(config, 'goFullscreen').name('Toggle Fullscreen (F)');
-
-        // --- Setup Three.js Scene ---
+        // --- Basic Three.js Setup ---
         const scene = new THREE.Scene();
-        scene.fog = new THREE.FogExp2(0x0f0518, 0.02);
+        scene.background = new THREE.Color('#87CEEB'); // Sky blue
 
-        const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 150);
-        camera.position.set(0, 10, 28); 
-        camera.lookAt(0, 5, 0);
+        const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
+        camera.position.set(0, 8, 20); 
+        camera.lookAt(0, 4, 0);
 
-        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setClearColor(0x0f0518, 1); 
         document.body.appendChild(renderer.domElement);
 
-        // Lighting
-        const hemiLight = new THREE.HemisphereLight(0xffffff, 0x222222, 0.4);
+        const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.8);
         scene.add(hemiLight);
-        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-        dirLight.position.set(10, 30, 20);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
+        dirLight.position.set(5, 15, 10);
         scene.add(dirLight);
-        
-        // Magical spotlight on the flower
-        const spotLight = new THREE.SpotLight(0xE91E63, 500);
-        spotLight.position.set(0, 25, 10);
-        spotLight.angle = Math.PI / 6;
-        spotLight.penumbra = 0.5;
-        scene.add(spotLight);
 
-        // --- Background Subtraction Silhouette ---
-        const video = document.getElementById('webcam');
-        const videoTex = new THREE.VideoTexture(video);
-        videoTex.colorSpace = THREE.SRGBColorSpace;
+        // --- 3D Objects: The Garden ---
 
-        // Texture to hold the "empty room" background
-        const bgCanvas = document.createElement('canvas');
-        const bgCtx = bgCanvas.getContext('2d');
-        const bgTex = new THREE.CanvasTexture(bgCanvas);
-        bgTex.colorSpace = THREE.SRGBColorSpace;
+        // 1. The Ground/Soil
+        const groundGeo = new THREE.BoxGeometry(40, 2, 10);
+        const groundMat = new THREE.MeshStandardMaterial({ color: 0x5C4033, roughness: 1 });
+        const ground = new THREE.Mesh(groundGeo, groundMat);
+        ground.position.y = -1;
+        scene.add(ground);
 
-        const silhouetteGeo = new THREE.PlaneGeometry(60, 45); 
-        const silhouetteMat = new THREE.ShaderMaterial({
-            uniforms: {
-                tDiffuse: { value: videoTex },
-                tBackground: { value: bgTex },
-                brandColor: { value: new THREE.Color(0x2196F3) }, 
-                threshold: { value: config.bgThreshold }
-            },
-            vertexShader: `
-                varying vec2 vUv;
-                void main() {
-                    vUv = vec2(1.0 - uv.x, uv.y); // Mirror image
-                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-                }
-            `,
-            fragmentShader: `
-                uniform sampler2D tDiffuse;
-                uniform sampler2D tBackground;
-                uniform vec3 brandColor;
-                uniform float threshold;
-                varying vec2 vUv;
-                
-                void main() {
-                    vec4 curr = texture2D(tDiffuse, vUv);
-                    vec4 bg = texture2D(tBackground, vUv);
+        const grassGeo = new THREE.PlaneGeometry(40, 10);
+        const grassMat = new THREE.MeshStandardMaterial({ color: 0x4CAF50 });
+        const grass = new THREE.Mesh(grassGeo, grassMat);
+        grass.rotation.x = -Math.PI / 2;
+        grass.position.y = 0.01;
+        scene.add(grass);
 
-                    // Calculate color distance between live feed and empty background
-                    float diff = distance(curr.rgb, bg.rgb);
+        // 2. The Plant Group
+        const plantGroup = new THREE.Group();
+        plantGroup.position.y = 0;
+        scene.add(plantGroup);
 
-                    // Create a sharp but smooth mask
-                    float alpha = smoothstep(threshold * 0.8, threshold * 1.2, diff);
+        // Seed
+        const seed = new THREE.Mesh(new THREE.SphereGeometry(0.5, 16, 16), new THREE.MeshStandardMaterial({ color: 0x3e2723 }));
+        seed.position.y = 0.5;
+        seed.visible = false;
+        plantGroup.add(seed);
 
-                    // Blend the actual kid's clothes/colors with the BxCM blue for a magical look
-                    vec3 finalColor = mix(brandColor, curr.rgb, 0.7) * 1.2;
+        // Stem
+        const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.3, 5), new THREE.MeshStandardMaterial({ color: 0x4CAF50 }));
+        stem.position.y = 2.5;
+        stem.scale.y = 0.001; // Hidden initially
+        plantGroup.add(stem);
 
-                    gl_FragColor = vec4(finalColor, alpha * 0.9);
-                }
-            `,
-            transparent: true,
-            blending: THREE.NormalBlending,
-            depthWrite: false
-        });
-        const silhouetteMesh = new THREE.Mesh(silhouetteGeo, silhouetteMat);
-        silhouetteMesh.position.set(0, 15, -15);
-        scene.add(silhouetteMesh);
-
-        // Function to snap the background
-        function captureBackground() {
-            if (video.readyState === video.HAVE_ENOUGH_DATA) {
-                bgCanvas.width = video.videoWidth;
-                bgCanvas.height = video.videoHeight;
-                bgCtx.drawImage(video, 0, 0);
-                bgTex.needsUpdate = true;
-                
-                if(!hasStarted) {
-                    hasStarted = true;
-                    document.getElementById('center-message').innerHTML = "Reach out and touch the flower!";
-                    setTimeout(() => {
-                        document.getElementById('center-message').style.opacity = 0;
-                    }, 3000);
-                }
-            }
-        }
-        document.getElementById('calibrate-btn').addEventListener('click', captureBackground);
-
-        // --- The Giant Interactive Flower ---
-        const flowerGroup = new THREE.Group();
-        flowerGroup.position.set(0, 0, 5); // Bring it forward
-
-        // 1. The Stem
-        const stemGeo = new THREE.CylinderGeometry(0.3, 0.5, 12, 16);
-        stemGeo.translate(0, 6, 0); // Pivot at the bottom
-        const stemMat = new THREE.MeshStandardMaterial({ color: 0x4CAF50, roughness: 0.6 });
-        const stem = new THREE.Mesh(stemGeo, stemMat);
-        flowerGroup.add(stem);
-
-        // 2. The Flower Head (attached to top of stem)
+        // Flower Head (Hidden initially)
         const flowerHead = new THREE.Group();
-        flowerHead.position.y = 12;
-        flowerGroup.add(flowerHead);
+        flowerHead.position.y = 5;
+        flowerHead.scale.setScalar(0.001);
+        plantGroup.add(flowerHead);
 
-        // Realistic Petal Shape
-        const petalShape = new THREE.Shape();
-        petalShape.moveTo(0, 0);
-        petalShape.bezierCurveTo(1.5, 1.5, 2.0, 5.0, 0, 6.5);
-        petalShape.bezierCurveTo(-2.0, 5.0, -1.5, 1.5, 0, 0);
-        
-        const petalGeo = new THREE.ShapeGeometry(petalShape);
-        const petalMat = new THREE.MeshStandardMaterial({ 
-            color: 0xE91E63, // BxCM Pink
-            side: THREE.DoubleSide,
-            roughness: 0.4,
-            metalness: 0.1
-        });
-
-        const petals = [];
-        const numPetals = 14;
-        for (let i = 0; i < numPetals; i++) {
-            const petal = new THREE.Mesh(petalGeo, petalMat);
-            petal.rotation.y = (i / numPetals) * Math.PI * 2;
-            petal.userData.baseRotY = petal.rotation.y;
-            petal.rotation.x = 0.6; // Closed state
-            flowerHead.add(petal);
-            petals.push(petal);
-        }
-
-        // Inner Petals (Orange)
-        const innerPetals = [];
-        const innerPetalMat = new THREE.MeshStandardMaterial({ color: 0xFF5722, side: THREE.DoubleSide });
-        for (let i = 0; i < 10; i++) {
-            const petal = new THREE.Mesh(petalGeo, innerPetalMat);
-            petal.scale.setScalar(0.6);
-            petal.rotation.y = (i / 10) * Math.PI * 2 + 0.2;
-            petal.userData.baseRotY = petal.rotation.y;
-            petal.rotation.x = 0.4;
-            flowerHead.add(petal);
-            innerPetals.push(petal);
-        }
-
-        // 3. Flower Center
-        const centerGeo = new THREE.SphereGeometry(1.8, 32, 16);
-        centerGeo.scale(1, 0.4, 1);
-        const centerMat = new THREE.MeshStandardMaterial({ color: 0xFFC107, roughness: 0.9 });
-        const center = new THREE.Mesh(centerGeo, centerMat);
-        center.position.y = 0.5;
+        const center = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 16), new THREE.MeshStandardMaterial({ color: 0xFFC107 }));
         flowerHead.add(center);
 
-        scene.add(flowerGroup);
-
-        // --- Magic Pollen Particles ---
-        const pollenCount = 300;
-        const pollenGeo = new THREE.BufferGeometry();
-        const pollenPos = new Float32Array(pollenCount * 3);
-        const pollenVel = [];
-        
-        for(let i=0; i<pollenCount; i++) {
-            pollenPos[i*3] = 0; 
-            pollenPos[i*3+1] = -100; // Hidden initially
-            pollenPos[i*3+2] = 0;
-            pollenVel.push(new THREE.Vector3());
+        const petals = [];
+        const petalGeo = new THREE.CylinderGeometry(0.5, 0.1, 3);
+        petalGeo.translate(0, 1.5, 0); // Pivot at base
+        const petalMat = new THREE.MeshStandardMaterial({ color: 0xE91E63 }); // BxCM Pink
+        for(let i=0; i<8; i++) {
+            const p = new THREE.Mesh(petalGeo, petalMat);
+            p.rotation.z = Math.PI / 2; // Lay flat
+            p.rotation.x = (i / 8) * Math.PI * 2;
+            flowerHead.add(p);
+            petals.push(p);
         }
-        pollenGeo.setAttribute('position', new THREE.BufferAttribute(pollenPos, 3));
-        
-        // Texture for glowing pollen
-        const pCanvas = document.createElement('canvas');
-        pCanvas.width = 32; pCanvas.height = 32;
-        const pCtx = pCanvas.getContext('2d');
-        const pGrad = pCtx.createRadialGradient(16, 16, 0, 16, 16, 16);
-        pGrad.addColorStop(0, 'rgba(255, 193, 7, 1)');
-        pGrad.addColorStop(1, 'rgba(255, 193, 7, 0)');
-        pCtx.fillStyle = pGrad;
-        pCtx.beginPath(); pCtx.arc(16, 16, 16, 0, Math.PI*2); pCtx.fill();
-        const pollenTex = new THREE.CanvasTexture(pCanvas);
 
-        const pollenMat = new THREE.PointsMaterial({ 
-            size: 1.2, 
-            map: pollenTex,
-            transparent: true, 
-            blending: THREE.AdditiveBlending,
-            depthWrite: false
-        });
-        const pollenSys = new THREE.Points(pollenGeo, pollenMat);
-        scene.add(pollenSys);
-        
-        let pollenIdx = 0;
+        // 3. Interactive Props (Cloud & Sun)
+        const cloudGroup = new THREE.Group();
+        cloudGroup.position.set(-8, 12, 0);
+        const cloudGeo = new THREE.SphereGeometry(1.5);
+        const cloudMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+        const c1 = new THREE.Mesh(cloudGeo, cloudMat);
+        const c2 = new THREE.Mesh(cloudGeo, cloudMat); c2.position.set(-1.5, -0.5, 0);
+        const c3 = new THREE.Mesh(cloudGeo, cloudMat); c3.position.set(1.5, -0.5, 0);
+        cloudGroup.add(c1, c2, c3);
+        cloudGroup.visible = false;
+        scene.add(cloudGroup);
 
-        // --- Camera Setup ---
-        const cameraSelect = document.getElementById('camera-select');
+        const sunGroup = new THREE.Group();
+        sunGroup.position.set(8, 12, 0);
+        const sunMesh = new THREE.Mesh(new THREE.SphereGeometry(2, 32, 32), new THREE.MeshStandardMaterial({ color: 0xFFC107, emissive: 0xFF9800, emissiveIntensity: 0.5 }));
+        sunGroup.add(sunMesh);
+        sunGroup.visible = false;
+        scene.add(sunGroup);
+
+
+        // --- Visual Touch Feedback (Sparkles) ---
+        // Shows kids EXACTLY where the camera sees their movement
+        const sparkleGeo = new THREE.BufferGeometry();
+        const sparklePos = new Float32Array(300 * 3);
+        sparkleGeo.setAttribute('position', new THREE.BufferAttribute(sparklePos, 3));
+        const sparkleMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.5, transparent: true, opacity: 0.8 });
+        const sparkles = new THREE.Points(sparkleGeo, sparkleMat);
+        scene.add(sparkles);
+        let sparkleIdx = 0;
+
+        // Water Drops Particle System
+        const dropGeo = new THREE.BufferGeometry();
+        const dropPos = new Float32Array(100 * 3);
+        dropGeo.setAttribute('position', new THREE.BufferAttribute(dropPos, 3));
+        const dropMat = new THREE.PointsMaterial({ color: 0x2196F3, size: 0.4 });
+        const drops = new THREE.Points(dropGeo, dropMat);
+        scene.add(drops);
+
+
+        // --- Camera & Motion Setup ---
+        const video = document.getElementById('webcam');
         const motionCanvas = document.getElementById('motion-canvas');
         const mCtx = motionCanvas.getContext('2d', { willReadFrequently: true });
-
-        const GRID_W = 60, GRID_H = 40;
+        
+        const GRID_W = 40, GRID_H = 30; // Low res grid for fast analysis
         motionCanvas.width = GRID_W; motionCanvas.height = GRID_H;
 
         let prevFrame = null;
         let currentStream = null;
-        
-        // Interaction State
-        let interactionLevel = 0; // 0 to 1
-        let interactionTarget = 0;
-        let motionX = 0;
 
-        async function getCameras() {
+        async function initCamera() {
             try {
-                await navigator.mediaDevices.getUserMedia({ video: true });
-                const devices = await navigator.mediaDevices.enumerateDevices();
-                const videoDevices = devices.filter(device => device.kind === 'videoinput');
-
-                cameraSelect.innerHTML = '';
-                videoDevices.forEach((device, index) => {
-                    const option = document.createElement('option');
-                    option.value = device.deviceId;
-                    option.text = device.label || `Camera ${index + 1}`;
-                    cameraSelect.appendChild(option);
-                });
-
-                if (videoDevices.length > 0) startStream(videoDevices[0].deviceId);
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240 } });
+                video.srcObject = stream;
+                
+                // Hide video behind scenes if full screen, or keep it as a mini-map
+                setTimeout(() => {
+                    startLesson();
+                }, 3000);
             } catch (err) {
-                cameraSelect.innerHTML = '<option>Permission Denied/Error</option>';
+                instructionText.innerHTML = "Camera error! Please allow camera access.";
             }
         }
 
-        async function startStream(deviceId) {
-            if (currentStream) currentStream.getTracks().forEach(track => track.stop());
-            try {
-                currentStream = await navigator.mediaDevices.getUserMedia({ 
-                    video: deviceId ? { deviceId: { exact: deviceId }, width: 640, height: 480 } : true 
-                });
-                video.srcObject = currentStream;
-                
-                // Auto-calibrate background shortly after load if they don't click the button
-                setTimeout(() => {
-                    if(!hasStarted) captureBackground();
-                }, 4000);
-
-            } catch (err) { console.error(err); }
+        function startLesson() {
+            currentStage = 1;
+            stageProgress = 0;
+            instructionText.innerHTML = "🌱 Wave at the SOIL to dig a hole!";
+            instructionText.style.color = "#5C4033";
+            progressContainer.style.display = "block";
+            progressFill.style.background = "#5C4033";
+            progressFill.style.width = "0%";
+            
+            seed.visible = false;
+            stem.scale.y = 0.001;
+            flowerHead.scale.setScalar(0.001);
+            cloudGroup.visible = false;
+            sunGroup.visible = false;
         }
-        cameraSelect.addEventListener('change', (e) => startStream(e.target.value));
 
-        // --- Motion Physics Analysis ---
-        function checkMotion() {
+        function advanceStage() {
+            currentStage++;
+            stageProgress = 0;
+            progressFill.style.width = "0%";
+
+            if (currentStage === 2) {
+                seed.visible = true;
+                instructionText.innerHTML = "💧 Wave at the CLOUD to rain water!";
+                instructionText.style.color = "#2196F3";
+                progressFill.style.background = "#2196F3";
+                cloudGroup.visible = true;
+            } 
+            else if (currentStage === 3) {
+                cloudGroup.visible = false;
+                sunGroup.visible = true;
+                instructionText.innerHTML = "☀️ Wave at the SUN for light!";
+                instructionText.style.color = "#FF9800";
+                progressFill.style.background = "#FF9800";
+                
+                // Grow stem
+                stem.scale.y = 1;
+                stem.position.y = 2.5;
+            }
+            else if (currentStage === 4) {
+                sunGroup.visible = false;
+                instructionText.innerHTML = "🌸 Touch the Plant to make it BLOOM!";
+                instructionText.style.color = "#E91E63";
+                progressFill.style.background = "#E91E63";
+                
+                // Show bud
+                flowerHead.scale.setScalar(0.5);
+                petals.forEach(p => p.rotation.z = Math.PI / 2); // Closed bud
+            }
+            else if (currentStage === 5) {
+                instructionText.innerHTML = "🎉 Beautiful! You grew a BxCM Flower! 🎉";
+                progressContainer.style.display = "none";
+                
+                // Full bloom
+                flowerHead.scale.setScalar(1);
+            }
+        }
+
+        // --- Core Motion Detection Logic ---
+        function analyzeMovement() {
             if (video.readyState !== video.HAVE_ENOUGH_DATA) return;
 
             mCtx.drawImage(video, 0, 0, GRID_W, GRID_H);
             const currentFrame = mCtx.getImageData(0, 0, GRID_W, GRID_H).data;
-            let motionCount = 0; 
-            let totalX = 0;
+            
+            let interactionScore = 0;
 
             if (prevFrame) {
-                for (let y = 0; y < GRID_H; y+=2) { 
-                    for (let x = 0; x < GRID_W; x+=2) {
+                for (let y = 0; y < GRID_H; y++) { 
+                    for (let x = 0; x < GRID_W; x++) {
                         const i = (y * GRID_W + x) * 4;
-
+                        
+                        // Pixel difference
                         const diff = Math.abs(currentFrame[i] - prevFrame[i]) + 
                                      Math.abs(currentFrame[i+1] - prevFrame[i+1]) + 
                                      Math.abs(currentFrame[i+2] - prevFrame[i+2]);
 
-                        if (diff > config.motionSensitivity) {
-                            const normX = (1 - (x / GRID_W)) * 2 - 1; 
-                            const worldX = normX * 25.0; 
+                        if (diff > 40) { // Motion detected here!
                             
-                            totalX += worldX; 
-                            motionCount++;
+                            // Map pixel coords to 3D world space for sparkles
+                            // X is mirrored
+                            const normX = (1 - (x / GRID_W)) * 2 - 1; 
+                            const normY = -( (y / GRID_H) * 2 - 1 );
+                            
+                            const worldX = normX * 15; 
+                            const worldY = normY * 10 + 6;
+
+                            // Create visual sparkle feedback so kids know they are "touching"
+                            if(Math.random() > 0.8) {
+                                sparklePos[sparkleIdx*3] = worldX;
+                                sparklePos[sparkleIdx*3+1] = worldY;
+                                sparklePos[sparkleIdx*3+2] = 2; // In front
+                                sparkleIdx = (sparkleIdx + 1) % 300;
+                            }
+
+                            // --- Check Intersection with Target Zones ---
+                            
+                            if (currentStage === 1) { // Stage 1: Dig Soil (Bottom Area)
+                                if (worldY < 3 && Math.abs(worldX) < 8) interactionScore++;
+                            } 
+                            else if (currentStage === 2) { // Stage 2: Water Cloud (Top Left Area)
+                                if (worldY > 8 && worldX < -4) {
+                                    interactionScore++;
+                                    // Make rain fall
+                                    if(Math.random() > 0.5) {
+                                        for(let d=0; d<100; d++) {
+                                            if(dropPos[d*3+1] < -2) {
+                                                dropPos[d*3] = cloudGroup.position.x + (Math.random()-0.5)*3;
+                                                dropPos[d*3+1] = cloudGroup.position.y - 1;
+                                                dropPos[d*3+2] = 0;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            else if (currentStage === 3) { // Stage 3: Sun (Top Right Area)
+                                if (worldY > 8 && worldX > 4) interactionScore++;
+                            }
+                            else if (currentStage === 4) { // Stage 4: Bloom (Center Area)
+                                if (worldY > 3 && worldY < 10 && Math.abs(worldX) < 5) interactionScore++;
+                            }
                         }
                     }
                 }
             }
 
-            // Check if motion is happening near the giant flower's center X coordinates
-            if(motionCount > 5) {
-                motionX = totalX / motionCount;
-                if (Math.abs(motionX) < 12) { // Kid is in the middle touching it
-                    interactionTarget = 1;
-                } else {
-                    interactionTarget = 0;
-                }
-            } else {
-                interactionTarget = 0;
-            }
-
             prevFrame = new Uint8ClampedArray(currentFrame);
+
+            // Update Progress
+            if (interactionScore > 5 && currentStage <= 4) {
+                stageProgress += 0.8; // Speed of progress
+                progressFill.style.width = `${Math.min(stageProgress, 100)}%`;
+
+                // Add visual shake/feedback to the target object
+                if(currentStage === 2) cloudGroup.position.y = 12 + Math.sin(Date.now()*0.02)*0.2;
+                if(currentStage === 3) sunGroup.scale.setScalar(1 + Math.sin(Date.now()*0.02)*0.1);
+
+                if (stageProgress >= 100) {
+                    advanceStage();
+                }
+            }
+            
+            sparkleGeo.attributes.position.needsUpdate = true;
         }
 
         // --- Animation Loop ---
         function animate() {
             requestAnimationFrame(animate);
 
-            checkMotion();
-
-            // Update Shader Uniforms
-            silhouetteMat.uniforms.threshold.value = config.bgThreshold;
+            analyzeMovement();
 
             const time = Date.now() * 0.001;
 
-            // Smoothly ramp up/down interaction
-            interactionLevel += (interactionTarget - interactionLevel) * 0.05;
+            // Idle Animations
+            if (cloudGroup.visible) cloudGroup.position.y = 12 + Math.sin(time) * 0.5;
+            if (sunGroup.visible) sunGroup.rotation.z = time * 0.5;
 
-            // 1. Bend the stem towards the kid slightly
-            flowerGroup.rotation.z = Math.sin(time) * 0.05 + (interactionLevel * (motionX * 0.02));
-
-            // 2. Animate Petals Blooming
-            petals.forEach(petal => {
-                // Base 0.6, opens to 1.7 when touched
-                petal.rotation.x = THREE.MathUtils.lerp(0.6, 1.7, interactionLevel);
-                // Breathe
-                petal.rotation.x += Math.sin(time * 2 + petal.userData.baseRotY) * 0.05;
-            });
-            innerPetals.forEach(petal => {
-                petal.rotation.x = THREE.MathUtils.lerp(0.4, 1.4, interactionLevel);
-                petal.rotation.x += Math.cos(time * 2.5 + petal.userData.baseRotY) * 0.06;
-            });
-
-            // Spin center slowly
-            flowerHead.rotation.y = time * 0.2;
-
-            // 3. Emit Pollen if being touched
-            if (interactionLevel > 0.4 && Math.random() > 0.3) {
-                // Spawn 2 particles
-                for(let k=0; k<2; k++) {
-                    pollenPos[pollenIdx*3] = flowerHead.position.x + (Math.random()-0.5)*3;
-                    pollenPos[pollenIdx*3+1] = flowerHead.position.y + 2;
-                    pollenPos[pollenIdx*3+2] = flowerGroup.position.z + (Math.random()-0.5)*3;
-                    
-                    pollenVel[pollenIdx].set(
-                        (Math.random()-0.5)*0.1, 
-                        Math.random()*0.1 + 0.05, 
-                        (Math.random()-0.5)*0.1
-                    );
-                    pollenIdx = (pollenIdx + 1) % pollenCount;
-                }
+            // Stage 4 to 5 Blooming Animation
+            if (currentStage === 5) {
+                flowerHead.rotation.y += 0.01;
+                petals.forEach(p => {
+                    // Open petals gracefully
+                    p.rotation.z = THREE.MathUtils.lerp(p.rotation.z, 0.2, 0.05);
+                });
             }
 
-            // Update Pollen Physics
-            const pPositions = pollenGeo.attributes.position.array;
-            for(let i=0; i<pollenCount; i++) {
-                if(pPositions[i*3+1] > -50) { // Active
-                    pPositions[i*3] += pollenVel[i].x;
-                    pPositions[i*3+1] += pollenVel[i].y;
-                    pPositions[i*3+2] += pollenVel[i].z;
-                    
-                    // Wind swirl
-                    pPositions[i*3] += Math.sin(time * 2 + i) * 0.02;
-                    
-                    // Recycle if it goes too high
-                    if(pPositions[i*3+1] > 30) pPositions[i*3+1] = -100;
-                }
+            // Update Particles
+            const sPositions = sparkleGeo.attributes.position.array;
+            for(let i=0; i<300; i++) {
+                sPositions[i*3+1] -= 0.05; // Sparkles fall down
+                if(sPositions[i*3+1] < -10) sPositions[i*3+1] = -100; // Hide
             }
-            pollenGeo.attributes.position.needsUpdate = true;
+            sparkleGeo.attributes.position.needsUpdate = true;
+
+            const dPositions = dropGeo.attributes.position.array;
+            for(let i=0; i<100; i++) {
+                dPositions[i*3+1] -= 0.3; // Rain falls fast
+            }
+            dropGeo.attributes.position.needsUpdate = true;
 
             renderer.render(scene, camera);
         }
 
-        // --- Fullscreen and UI Logic ---
-        document.addEventListener('fullscreenchange', () => {
-            const uiOverlay = document.getElementById('ui-overlay');
-            const videoContainer = document.getElementById('video-container');
-
-            if (document.fullscreenElement) {
-                uiOverlay.style.display = 'none';
-                videoContainer.style.display = 'none';
-                gui.hide();
+        // --- Event Listeners ---
+        document.getElementById('fullscreen-btn').addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+                document.getElementById('admin-panel').style.display = 'none';
+                document.getElementById('video-container').style.display = 'none';
             } else {
-                uiOverlay.style.display = 'block';
-                if(config.showWebcam) videoContainer.style.display = 'block';
-                gui.show();
+                document.exitFullscreen();
             }
         });
 
-        window.addEventListener('keydown', (e) => {
-            if (e.key.toLowerCase() === 'f') config.goFullscreen();
+        document.addEventListener('fullscreenchange', () => {
+            if (!document.fullscreenElement) {
+                document.getElementById('admin-panel').style.display = 'block';
+                document.getElementById('video-container').style.display = 'block';
+            }
         });
+
+        document.getElementById('reset-btn').addEventListener('click', startLesson);
 
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
@@ -568,7 +518,11 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
 
-        getCameras();
+        // Start
+        for(let i=0; i<300; i++) sparklePos[i*3+1] = -100; // Hide sparkles initially
+        for(let i=0; i<100; i++) dropPos[i*3+1] = -100; // Hide rain initially
+
+        initCamera();
         animate();
     </script>
 </body>
