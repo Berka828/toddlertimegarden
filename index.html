@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BxCM Interactive Grass Garden</title>
+    <title>BxCM Realistic Interactive Meadow</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Quicksand:wght@600;700&display=swap');
 
-        body { margin: 0; overflow: hidden; background: #87CEEB; font-family: 'Quicksand', sans-serif; }
+        body { margin: 0; overflow: hidden; background: #ffe4e1; font-family: 'Quicksand', sans-serif; }
         canvas { display: block; }
 
         /* UI Overlays */
@@ -26,9 +26,9 @@
             text-transform: uppercase;
             letter-spacing: 2px;
             margin-bottom: 10px;
-            text-shadow: 1px 1px 3px rgba(0,0,0,0.5);
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
             background: rgba(255,255,255,0.2);
-            backdrop-filter: blur(4px);
+            backdrop-filter: blur(5px);
             padding: 10px 20px;
             border-radius: 50px;
             display: inline-block;
@@ -42,10 +42,9 @@
         .c-b { color: #2196F3; }
 
         #camera-settings {
-            background: rgba(0,0,0,0.6);
+            background: rgba(0,0,0,0.7);
             padding: 15px;
             border-radius: 8px;
-            border: 1px solid rgba(255,255,255,0.2);
             pointer-events: auto;
             max-width: 300px;
             margin-top: 15px;
@@ -57,9 +56,9 @@
             border-radius: 4px;
             margin-top: 5px;
             width: 100%;
-            background: #222;
+            background: #333;
             color: white;
-            border: 1px solid #555;
+            border: none;
         }
 
         #video-container {
@@ -72,14 +71,39 @@
             border-radius: 8px;
             overflow: hidden;
             transform: scaleX(-1);
+            opacity: 0.8;
             z-index: 10;
             display: none; 
         }
 
         video { width: 100%; height: 100%; object-fit: cover; }
+
+        /* Welcome Message */
+        #center-message {
+            position: absolute;
+            top: 40%;
+            width: 100%;
+            text-align: center;
+            color: #fff;
+            font-size: 3rem;
+            text-shadow: 0px 5px 15px rgba(0,0,0,0.4);
+            pointer-events: none;
+            z-index: 20;
+            transition: opacity 1s ease;
+        }
+
+        .pulse { animation: pulse 3s infinite; }
+
+        @keyframes pulse {
+            0% { opacity: 0.8; transform: scale(0.98); }
+            50% { opacity: 1; transform: scale(1.02); }
+            100% { opacity: 0.8; transform: scale(0.98); }
+        }
     </style>
 </head>
 <body>
+
+    <div id="center-message" class="pulse">Run to the wall to grow flowers!</div>
 
     <div id="ui-overlay">
         <div class="bxcm-logo">
@@ -97,6 +121,7 @@
         <video id="webcam" autoplay playsinline></video>
     </div>
 
+    <!-- Hidden Canvases for Motion Physics -->
     <canvas id="motion-canvas" style="display:none;"></canvas>
 
     <script type="importmap">
@@ -114,195 +139,234 @@
 
         // --- Configuration & State ---
         const config = {
-            motionSensitivity: 30,
-            plantDensity: 1.5,
-            plantLifespan: 600,
+            motionSensitivity: 40,
             showWebcam: false,
-            shadowOpacity: 0.35,
             goFullscreen: () => {
                 if (!document.fullscreenElement) document.documentElement.requestFullscreen();
                 else document.exitFullscreen();
             }
         };
 
-        const brandColors = [0xFFC107, 0xFF5722, 0xE91E63, 0x2196F3, 0x9C27B0]; // Excluded green to pop against grass
-        const plants = [];
+        const brandColors = [0xFFC107, 0xFF5722, 0xE91E63, 0x2196F3, 0x9C27B0]; 
+        let hasStarted = false;
 
         // --- Setup Admin GUI ---
-        const gui = new GUI({ title: '🌿 Garden Settings' });
-        const motionFolder = gui.addFolder('Sensor & Interaction');
-        motionFolder.add(config, 'motionSensitivity', 10, 80, 1).name('Motion Sensitivity');
-        motionFolder.add(config, 'plantDensity', 0.5, 4, 0.1).name('Plant Density');
-        motionFolder.add(config, 'plantLifespan', 200, 1500, 10).name('Time Before Fading');
-        motionFolder.add(config, 'shadowOpacity', 0, 1, 0.05).name('Kids Shadow Opacity').onChange(v => {
-            if(silhouetteMat) silhouetteMat.opacity = v;
-        });
-        motionFolder.add(config, 'showWebcam').name('Show Webcam UI').onChange(v => {
+        const gui = new GUI({ title: '🌿 Meadow Admin Panel' });
+        gui.add(config, 'motionSensitivity', 10, 100, 1).name('Motion Sensitivity');
+        gui.add(config, 'showWebcam').name('Show Webcam').onChange(v => {
             if (!document.fullscreenElement) document.getElementById('video-container').style.display = v ? 'block' : 'none';
         });
         gui.add(config, 'goFullscreen').name('Toggle Fullscreen (F)');
 
+        // --- 1. Texture Map Physics (Wind & Bloom) ---
+        // We use invisible 2D canvases to map where motion happens.
+        // Wind clears quickly (grass bends back). Bloom clears slowly (flowers stay a bit).
+        const mapSize = 512;
+        const windCanvas = document.createElement('canvas');
+        windCanvas.width = mapSize; windCanvas.height = mapSize;
+        const windCtx = windCanvas.getContext('2d');
+        const windTex = new THREE.CanvasTexture(windCanvas);
+
+        const bloomCanvas = document.createElement('canvas');
+        bloomCanvas.width = mapSize; bloomCanvas.height = mapSize;
+        const bloomCtx = bloomCanvas.getContext('2d');
+        const bloomTex = new THREE.CanvasTexture(bloomCanvas);
+
         // --- Setup Three.js Scene ---
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x87CEEB); // Sky blue background
-        scene.fog = new THREE.Fog(0x87CEEB, 20, 60);
+        scene.fog = new THREE.FogExp2(0xffe4e1, 0.025); // Sunset mist
 
-        // Angled perspective to see the 3D depth of the grass/flowers
-        const camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.set(0, -10, 25); 
-        camera.lookAt(0, 0, 0);
+        const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 150);
+        camera.position.set(0, 12, 22); 
+        camera.lookAt(0, 2, 0);
 
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.shadowMap.enabled = true; // Enable shadows for a realistic look
-        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.setClearColor(0xffe4e1, 1);
         document.body.appendChild(renderer.domElement);
 
         // Lighting
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-        scene.add(ambientLight);
-        
-        const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
-        dirLight.position.set(10, 15, 20);
-        dirLight.castShadow = true;
-        dirLight.shadow.mapSize.width = 1024;
-        dirLight.shadow.mapSize.height = 1024;
-        dirLight.shadow.camera.near = 0.5;
-        dirLight.shadow.camera.far = 50;
-        dirLight.shadow.camera.left = -25;
-        dirLight.shadow.camera.right = 25;
-        dirLight.shadow.camera.top = 25;
-        dirLight.shadow.camera.bottom = -25;
+        const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6);
+        scene.add(hemiLight);
+        const dirLight = new THREE.DirectionalLight(0xffeedd, 1.0);
+        dirLight.position.set(20, 40, 15);
         scene.add(dirLight);
 
-        // --- Ground Plane ---
-        const groundGeo = new THREE.PlaneGeometry(80, 60);
-        const groundMat = new THREE.MeshStandardMaterial({ 
-            color: 0x4CAF50, // Rich grass green
-            roughness: 0.8,
-            metalness: 0.1
+        // Decorative Sun
+        const sunGeo = new THREE.CircleGeometry(8, 32);
+        const sunMat = new THREE.MeshBasicMaterial({ color: 0xfff0aa, fog: false });
+        const sun = new THREE.Mesh(sunGeo, sunMat);
+        sun.position.set(0, 20, -50);
+        scene.add(sun);
+
+        // --- Realistic Instanced Grass ---
+        const numGrass = 50000;
+        const grassGeo = new THREE.PlaneGeometry(0.15, 2.5, 1, 4);
+        grassGeo.translate(0, 1.25, 0); // Pivot at the ground
+
+        const grassMat = new THREE.MeshStandardMaterial({ 
+            color: 0xffffff,
+            side: THREE.DoubleSide,
+            roughness: 0.8
         });
-        const ground = new THREE.Mesh(groundGeo, groundMat);
-        ground.receiveShadow = true;
-        scene.add(ground);
 
-        // --- Video Silhouette Layer (As a Natural Shadow) ---
-        const video = document.getElementById('webcam');
-        let videoTexture, silhouetteMat;
+        const grassParams = { time: { value: 0 }, windMap: { value: windTex } };
 
-        function initSilhouette() {
-            videoTexture = new THREE.VideoTexture(video);
-            videoTexture.colorSpace = THREE.SRGBColorSpace;
+        // Inject custom shaders to bend grass dynamically based on the Wind Texture
+        grassMat.onBeforeCompile = (shader) => {
+            shader.uniforms.time = grassParams.time;
+            shader.uniforms.windMap = grassParams.windMap;
+            
+            shader.vertexShader = `
+                uniform float time;
+                uniform sampler2D windMap;
+                varying vec2 vMyUv;
+            ` + shader.vertexShader;
+            
+            shader.vertexShader = shader.vertexShader.replace(
+                `#include <begin_vertex>`,
+                `
+                #include <begin_vertex>
+                vMyUv = uv;
+                vec3 instPos = vec3(instanceMatrix[3][0], instanceMatrix[3][1], instanceMatrix[3][2]);
+                
+                // Map position to texture space
+                vec2 mapUv = vec2((instPos.x + 25.0) / 50.0, (instPos.z + 15.0) / 30.0);
+                float windForce = texture2D(windMap, mapUv).r;
+                
+                // Natural gentle wind
+                float naturalWind = sin(time * 2.0 + instPos.x * 0.5 + instPos.z * 0.5) * 0.15;
+                
+                if (position.y > 0.0) {
+                    transformed.x += naturalWind * position.y;
+                    
+                    // Bend heavily based on kids movement
+                    transformed.x += windForce * 2.5 * position.y;
+                    transformed.z -= windForce * 2.5 * position.y;
+                    transformed.y -= windForce * 1.0 * position.y; // squash down
+                }
+                `
+            );
+            
+            shader.fragmentShader = `
+                varying vec2 vMyUv;
+            ` + shader.fragmentShader;
+            
+            shader.fragmentShader = shader.fragmentShader.replace(
+                `#include <color_fragment>`,
+                `
+                #include <color_fragment>
+                // Add vertical gradient to grass (dark at roots, bright at tips)
+                vec3 rootColor = vec3(0.01, 0.12, 0.01);
+                diffuseColor.rgb = mix(rootColor, diffuseColor.rgb, vMyUv.y);
+                `
+            );
+        };
 
-            // Multiply blending makes the video act like a dark shadow cast on the ground
-            silhouetteMat = new THREE.MeshBasicMaterial({ 
-                map: videoTexture, 
-                color: 0x000000, 
-                transparent: true, 
-                opacity: config.shadowOpacity,
-                blending: THREE.MultiplyBlending 
-            });
-
-            const silGeo = new THREE.PlaneGeometry(55, 35);
-            const silPlane = new THREE.Mesh(silGeo, silhouetteMat);
-            silPlane.position.set(0, 0, 0.1); // Slightly above ground
-            silPlane.scale.x = -1; // Mirror to match movement
-            scene.add(silPlane);
+        const grassMesh = new THREE.InstancedMesh(grassGeo, grassMat, numGrass);
+        const dummy = new THREE.Object3D();
+        for(let i = 0; i < numGrass; i++) {
+            dummy.position.set((Math.random() - 0.5) * 50, 0, (Math.random() - 0.5) * 30);
+            dummy.rotation.y = Math.random() * Math.PI;
+            dummy.scale.setScalar(0.4 + Math.random() * 0.6);
+            dummy.updateMatrix();
+            grassMesh.setMatrixAt(i, dummy.matrix);
+            grassMesh.setColorAt(i, new THREE.Color().setHSL(0.28 + Math.random() * 0.06, 0.8, 0.3 + Math.random() * 0.2));
         }
+        scene.add(grassMesh);
 
-        // --- Plant Geometries ---
-        const centerGeo = new THREE.SphereGeometry(0.2, 12, 12);
-        const petalGeo = new THREE.SphereGeometry(0.3, 12, 12);
-        petalGeo.scale(1, 0.2, 2);
+        // --- Instanced Blooming Flowers ---
+        // Generates a soft flower texture procedurally without external images
+        const pCan = document.createElement('canvas');
+        pCan.width = 256; pCan.height = 256;
+        const pCtx = pCan.getContext('2d');
+        pCtx.fillStyle = 'transparent'; pCtx.fillRect(0, 0, 256, 256);
+        pCtx.shadowColor = 'rgba(0,0,0,0.5)'; pCtx.shadowBlur = 6;
+        for(let i=0; i<6; i++) {
+            const a = (i/6) * Math.PI * 2;
+            pCtx.fillStyle = 'white';
+            pCtx.beginPath();
+            pCtx.ellipse(128 + Math.cos(a)*40, 128 + Math.sin(a)*40, 25, 55, a, 0, Math.PI*2);
+            pCtx.fill();
+        }
+        pCtx.shadowBlur = 0;
+        pCtx.fillStyle = '#FFDD00';
+        pCtx.beginPath(); pCtx.arc(128, 128, 25, 0, Math.PI*2); pCtx.fill();
+        const flowerTex = new THREE.CanvasTexture(pCan);
+
+        const numFlowers = 2500;
+        const flowerGeo = new THREE.PlaneGeometry(1.5, 1.5);
+        flowerGeo.translate(0, 0.75, 0); 
         
-        // Grass blade geometry
-        const grassGeo = new THREE.ConeGeometry(0.08, 1.5, 4);
-        grassGeo.translate(0, 0.75, 0); // Pivot at the bottom
-        grassGeo.rotateX(Math.PI / 2);
+        const flowerMat = new THREE.MeshStandardMaterial({
+            color: 0xffffff,
+            map: flowerTex,
+            transparent: true,
+            alphaTest: 0.1,
+            side: THREE.DoubleSide,
+            roughness: 0.5
+        });
 
-        function createPlant(x, y) {
-            const plantGroup = new THREE.Group();
-            const isFlower = Math.random() > 0.6; // 40% chance for a flower, 60% for grass clumps
+        const flowerParams = { bloomMap: { value: bloomTex } };
 
-            const targetScale = 0.8 + Math.random() * 0.7;
-
-            if (isFlower) {
-                const colorHex = brandColors[Math.floor(Math.random() * brandColors.length)];
+        // Inject shaders to scale up flowers only where movement happens
+        flowerMat.onBeforeCompile = (shader) => {
+            shader.uniforms.bloomMap = flowerParams.bloomMap;
+            shader.vertexShader = `
+                uniform sampler2D bloomMap;
+            ` + shader.vertexShader;
+            
+            shader.vertexShader = shader.vertexShader.replace(
+                `#include <begin_vertex>`,
+                `
+                #include <begin_vertex>
+                vec3 instPos = vec3(instanceMatrix[3][0], instanceMatrix[3][1], instanceMatrix[3][2]);
+                vec2 mapUv = vec2((instPos.x + 25.0) / 50.0, (instPos.z + 15.0) / 30.0);
+                float bloomForce = texture2D(bloomMap, mapUv).r;
                 
-                // Flower Center
-                const centerMat = new THREE.MeshStandardMaterial({ color: 0xFFD54F, roughness: 0.5 });
-                const center = new THREE.Mesh(centerGeo, centerMat);
-                center.position.z = 0.5;
-                center.castShadow = true;
-                plantGroup.add(center);
+                // Scale up dramatically when kids trigger the bloom map
+                float targetScale = max(0.001, bloomForce * 1.6);
+                transformed *= targetScale;
+                `
+            );
+        };
 
-                // Petals
-                const petalMat = new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.4 });
-                const numPetals = 6 + Math.floor(Math.random() * 3);
-                for(let i=0; i<numPetals; i++) {
-                    const petal = new THREE.Mesh(petalGeo, petalMat);
-                    const angle = (i / numPetals) * Math.PI * 2;
-                    petal.position.x = Math.cos(angle) * 0.4;
-                    petal.position.y = Math.sin(angle) * 0.4;
-                    petal.position.z = 0.4;
-                    petal.rotation.z = angle;
-                    petal.rotation.x = 0.2; 
-                    petal.castShadow = true;
-                    plantGroup.add(petal);
-                }
-                
-                // Stem
-                const stemGeo = new THREE.CylinderGeometry(0.05, 0.05, 1, 8);
-                stemGeo.rotateX(Math.PI / 2);
-                stemGeo.translate(0, 0, 0.5);
-                const stemMat = new THREE.MeshStandardMaterial({ color: 0x388E3C });
-                const stem = new THREE.Mesh(stemGeo, stemMat);
-                stem.castShadow = true;
-                plantGroup.add(stem);
-
-            } else {
-                // Tall Grass Clump
-                const grassMat = new THREE.MeshStandardMaterial({ color: 0x43A047, roughness: 0.8 });
-                const numBlades = 3 + Math.floor(Math.random() * 4);
-                for(let i=0; i<numBlades; i++) {
-                    const blade = new THREE.Mesh(grassGeo, grassMat);
-                    blade.position.set((Math.random() - 0.5) * 0.3, (Math.random() - 0.5) * 0.3, 0);
-                    blade.rotation.z = (Math.random() - 0.5) * 0.5;
-                    blade.rotation.y = (Math.random() - 0.5) * 0.5;
-                    blade.castShadow = true;
-                    plantGroup.add(blade);
-                }
-            }
-
-            plantGroup.position.set(x, y, 0);
-            plantGroup.scale.set(0, 0, 0); 
-            plantGroup.rotation.z = Math.random() * Math.PI;
-
-            // Sway physics offset
-            plantGroup.userData = {
-                swayOffset: Math.random() * Math.PI * 2,
-                swaySpeed: 0.02 + Math.random() * 0.02
-            };
-
-            scene.add(plantGroup);
-            plants.push({ mesh: plantGroup, targetScale: targetScale, age: 0, state: 'growing' });
+        const flowerMesh = new THREE.InstancedMesh(flowerGeo, flowerMat, numFlowers);
+        for(let i = 0; i < numFlowers; i++) {
+            dummy.position.set((Math.random() - 0.5) * 50, 0, (Math.random() - 0.5) * 30);
+            dummy.rotation.y = Math.random() * Math.PI;
+            dummy.scale.setScalar(0.5 + Math.random() * 0.5);
+            dummy.updateMatrix();
+            flowerMesh.setMatrixAt(i, dummy.matrix);
+            flowerMesh.setColorAt(i, new THREE.Color().setHex(brandColors[i % brandColors.length]));
         }
+        scene.add(flowerMesh);
+
+        // --- Interactive Butterflies ---
+        const bGeo = new THREE.PlaneGeometry(0.3, 0.3);
+        bGeo.rotateX(Math.PI / 2); // Lay flat
+        const bMat = new THREE.MeshBasicMaterial({ color: 0xFFEB3B, side: THREE.DoubleSide });
+        const butterflies = [];
+        for(let i=0; i<40; i++) {
+            const b = new THREE.Mesh(bGeo, bMat);
+            b.position.set((Math.random()-0.5)*50, 2+Math.random()*4, (Math.random()-0.5)*30);
+            b.userData = { vel: new THREE.Vector3() };
+            scene.add(b);
+            butterflies.push(b);
+        }
+        let butterflyTarget = new THREE.Vector3(0, 2, 0);
 
         // --- Camera & Motion Setup ---
+        const video = document.getElementById('webcam');
         const cameraSelect = document.getElementById('camera-select');
         const motionCanvas = document.getElementById('motion-canvas');
         const mCtx = motionCanvas.getContext('2d', { willReadFrequently: true });
 
-        const GRID_W = 60; 
-        const GRID_H = 40;
-        motionCanvas.width = GRID_W;
-        motionCanvas.height = GRID_H;
+        const GRID_W = 60, GRID_H = 40;
+        motionCanvas.width = GRID_W; motionCanvas.height = GRID_H;
 
         let prevFrame = null;
         let currentStream = null;
-
-        const wallWidth = 45;
-        const wallHeight = 30;
 
         async function getCameras() {
             try {
@@ -331,86 +395,117 @@
                     video: deviceId ? { deviceId: { exact: deviceId }, width: 640, height: 480 } : true 
                 });
                 video.srcObject = currentStream;
-                initSilhouette();
             } catch (err) { console.error(err); }
         }
         cameraSelect.addEventListener('change', (e) => startStream(e.target.value));
 
-        // --- Motion Tracking ---
+        // --- Motion Physics Analysis ---
         function checkMotion() {
             if (video.readyState !== video.HAVE_ENOUGH_DATA) return;
 
             mCtx.drawImage(video, 0, 0, GRID_W, GRID_H);
             const currentFrame = mCtx.getImageData(0, 0, GRID_W, GRID_H).data;
+            let motionCount = 0; let avgX = 0; let avgZ = 0;
 
             if (prevFrame) {
                 for (let y = 0; y < GRID_H; y+=2) { 
                     for (let x = 0; x < GRID_W; x+=2) {
                         const i = (y * GRID_W + x) * 4;
 
-                        const rDiff = Math.abs(currentFrame[i] - prevFrame[i]);
-                        const gDiff = Math.abs(currentFrame[i+1] - prevFrame[i+1]);
-                        const bDiff = Math.abs(currentFrame[i+2] - prevFrame[i+2]);
+                        const diff = Math.abs(currentFrame[i] - prevFrame[i]) + 
+                                     Math.abs(currentFrame[i+1] - prevFrame[i+1]) + 
+                                     Math.abs(currentFrame[i+2] - prevFrame[i+2]);
 
-                        if (rDiff + gDiff + bDiff > config.motionSensitivity) {
+                        if (diff > config.motionSensitivity) {
+                            if(!hasStarted) {
+                                hasStarted = true;
+                                document.getElementById('center-message').style.opacity = 0;
+                            }
 
-                            const normX = (1 - (x / GRID_W)) * 2 - 1; 
+                            // Convert webcam coordinates to 3D Field Coordinates
+                            const normX = (1 - (x / GRID_W)) * 2 - 1; // Mirrored for natural movement
                             const normY = -( (y / GRID_H) * 2 - 1 );
 
-                            const worldX = normX * (wallWidth / 2);
-                            const worldY = normY * (wallHeight / 2);
+                            const worldX = normX * 25.0; // Field width span
+                            const worldZ = normY * 15.0; // Field depth span
 
-                            // Check distance to existing plants to avoid overcrowding
-                            let tooClose = false;
-                            for(let p of plants) {
-                                const dist = Math.hypot(p.mesh.position.x - worldX, p.mesh.position.y - worldY);
-                                if(dist < config.plantDensity && p.state !== 'shrinking') {
-                                    tooClose = true;
-                                    break;
-                                }
-                            }
+                            avgX += worldX; avgZ += worldZ; motionCount++;
 
-                            if(!tooClose) {
-                                createPlant(worldX, worldY);
-                            }
+                            // Map World Space to the 2D Texture Maps (0 to 512)
+                            const tx = ((worldX + 25) / 50) * mapSize;
+                            const ty = ((worldZ + 15) / 30) * mapSize;
+
+                            // Draw Wind Push (Sharp, fast bending)
+                            windCtx.beginPath();
+                            const g1 = windCtx.createRadialGradient(tx, ty, 0, tx, ty, 20);
+                            g1.addColorStop(0, 'rgba(255,255,255,0.9)');
+                            g1.addColorStop(1, 'rgba(255,255,255,0)');
+                            windCtx.fillStyle = g1;
+                            windCtx.arc(tx, ty, 20, 0, Math.PI*2);
+                            windCtx.fill();
+
+                            // Draw Flower Bloom (Wide, stays longer)
+                            bloomCtx.beginPath();
+                            const g2 = bloomCtx.createRadialGradient(tx, ty, 0, tx, ty, 35);
+                            g2.addColorStop(0, 'rgba(255,255,255,1)');
+                            g2.addColorStop(1, 'rgba(255,255,255,0)');
+                            bloomCtx.fillStyle = g2;
+                            bloomCtx.arc(tx, ty, 35, 0, Math.PI*2);
+                            bloomCtx.fill();
                         }
                     }
                 }
             }
+
+            // Direct butterflies to movement
+            if(motionCount > 0) {
+                butterflyTarget.x += (avgX/motionCount - butterflyTarget.x) * 0.05;
+                butterflyTarget.z += (avgZ/motionCount - butterflyTarget.z) * 0.05;
+            }
+
             prevFrame = new Uint8ClampedArray(currentFrame);
+            windTex.needsUpdate = true;
+            bloomTex.needsUpdate = true;
         }
 
-        // --- Animation Loop ---
+        // --- Animation & Fade Loops ---
         function animate() {
             requestAnimationFrame(animate);
+
+            // 1. Fade the Wind Texture Quickly (Grass recovers instantly)
+            windCtx.fillStyle = 'rgba(0, 0, 0, 0.12)';
+            windCtx.fillRect(0, 0, mapSize, mapSize);
+
+            // 2. Fade the Bloom Texture Slowly (Looping design - flowers recede smoothly)
+            bloomCtx.fillStyle = 'rgba(0, 0, 0, 0.015)';
+            bloomCtx.fillRect(0, 0, mapSize, mapSize);
+
             checkMotion();
+            
+            // Advance shaders
+            grassParams.time.value += 0.016;
+            const time = Date.now() * 0.001;
 
-            const time = Date.now();
-
-            // Animate Plants
-            for(let i = plants.length - 1; i >= 0; i--) {
-                let p = plants[i];
-                p.age++;
-
-                // Gentle wind sway
-                p.mesh.rotation.x = Math.sin(time * p.mesh.userData.swaySpeed + p.mesh.userData.swayOffset) * 0.1;
-                p.mesh.rotation.y = Math.cos(time * p.mesh.userData.swaySpeed + p.mesh.userData.swayOffset) * 0.1;
-
-                if(p.state === 'growing') {
-                    p.mesh.scale.lerp(new THREE.Vector3(p.targetScale, p.targetScale, p.targetScale), 0.1);
-                    if(p.targetScale - p.mesh.scale.x < 0.05) p.state = 'blooming';
-                } 
-                else if (p.state === 'blooming') {
-                    if(p.age > config.plantLifespan) p.state = 'shrinking';
-                }
-                else if (p.state === 'shrinking') {
-                    p.mesh.scale.multiplyScalar(0.92);
-                    if(p.mesh.scale.x < 0.05) {
-                        scene.remove(p.mesh);
-                        plants.splice(i, 1);
-                    }
-                }
+            // Idle Butterfly wander
+            if(hasStarted && Math.random() > 0.98) {
+                butterflyTarget.x = Math.sin(time)*15;
+                butterflyTarget.z = Math.cos(time*1.3)*10;
             }
+
+            butterflies.forEach((b, i) => {
+                let target = butterflyTarget.clone();
+                target.x += Math.sin(time*2 + i)*3;
+                target.z += Math.cos(time*2 + i)*3;
+                target.y = 2 + Math.sin(time*3 + i)*1.5;
+
+                let dir = new THREE.Vector3().subVectors(target, b.position).normalize();
+                b.userData.vel.add(dir.multiplyScalar(0.005));
+                b.userData.vel.clampLength(0, 0.15);
+                b.position.add(b.userData.vel);
+                
+                b.scale.x = 0.2 + Math.abs(Math.sin(time * 20 + i)) * 0.8; // Flapping
+                b.lookAt(b.position.clone().add(b.userData.vel));
+            });
 
             renderer.render(scene, camera);
         }
