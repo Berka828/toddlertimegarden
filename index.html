@@ -63,15 +63,12 @@
             border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px;
         }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-
         .hidden { display: none !important; }
     </style>
 
-    <!-- MediaPipe AI Libraries -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
 
-    <!-- Three.js Import Map -->
     <script type="importmap">
         {
             "imports": {
@@ -85,7 +82,7 @@
 
     <div id="loading-screen">
         <div class="spinner"></div>
-        <div>Initializing Tracking Sensors...</div>
+        <div>Initializing AI Tracking & Body Sensors...</div>
         <div style="font-size: 1.2rem; margin-top: 10px;">Please allow camera access.</div>
     </div>
 
@@ -98,22 +95,19 @@
         </div>
     </div>
 
-    <!-- Hidden Video/Canvas for MediaPipe Processing -->
     <video id="input_video" class="hidden" autoplay playsinline></video>
     <canvas id="cutout_canvas" class="hidden"></canvas>
 
     <script type="module">
         import * as THREE from 'three';
 
-        const brandColors = [0xFFC107, 0xFF5722, 0xE91E63, 0x4CAF50, 0x2196F3];
-
         // --- 1. THREE.JS SCENE SETUP ---
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x87CEEB); 
-        scene.fog = new THREE.FogExp2(0x87CEEB, 0.015);
+        scene.fog = new THREE.FogExp2(0x87CEEB, 0.012);
 
         const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 200);
-        camera.position.set(0, 10, 45); 
+        camera.position.set(0, 10, 35); 
         camera.lookAt(0, 5, 0);
 
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -126,37 +120,29 @@
         dirLight.position.set(20, 40, 15);
         scene.add(dirLight);
 
-        // --- 2. SCENE OBJECTS ---
-        
-        // --- Sky Group ---
+        // --- Sky Objects ---
         const skyGroup = new THREE.Group();
-        skyGroup.position.set(0, 22, -20);
+        skyGroup.position.set(0, 22, -25);
         scene.add(skyGroup);
 
-        // Sun (Animated)
-        const sunGroup = new THREE.Group();
-        sunGroup.position.set(-25, 5, 0);
-        skyGroup.add(sunGroup);
-
-        const sunGeo = new THREE.CircleGeometry(6, 32);
+        // Sun & Sunbeams
+        const sunGeo = new THREE.CircleGeometry(8, 32);
         const sunMat = new THREE.MeshBasicMaterial({ color: 0xFFEB3B, side: THREE.DoubleSide });
         const sun = new THREE.Mesh(sunGeo, sunMat);
-        sunGroup.add(sun);
-        
-        // Sun Rays
-        const rayGeo = new THREE.PlaneGeometry(1, 4);
-        const rayMat = new THREE.MeshBasicMaterial({ color: 0xFFC107, side: THREE.DoubleSide });
-        for(let i=0; i<8; i++) {
-            const ray = new THREE.Mesh(rayGeo, rayMat);
-            ray.position.y = 8;
-            const pivot = new THREE.Group();
-            pivot.rotation.z = (i/8) * Math.PI * 2;
-            pivot.add(ray);
-            sunGroup.add(pivot);
-        }
+        sun.position.set(-25, 5, 0);
+        skyGroup.add(sun);
         let sunInteraction = 0;
+        let sunTargetScale = 1;
 
-        // Cloud (Animated)
+        const beamGeo = new THREE.BufferGeometry();
+        const beamPos = new Float32Array(150 * 3);
+        for(let i=0; i<150; i++) { beamPos[i*3+1] = -100; }
+        beamGeo.setAttribute('position', new THREE.BufferAttribute(beamPos, 3));
+        const beamMat = new THREE.PointsMaterial({ color: 0xFFEA00, size: 0.8, transparent: true, blending: THREE.AdditiveBlending });
+        const sunbeams = new THREE.Points(beamGeo, beamMat);
+        skyGroup.add(sunbeams);
+
+        // Cloud & Rain
         const cloudGroup = new THREE.Group();
         cloudGroup.position.set(20, 5, 0);
         const cloudMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 });
@@ -165,31 +151,32 @@
         const puff3 = new THREE.Mesh(new THREE.SphereGeometry(3), cloudMat); puff3.position.set(-4, -1, 0);
         cloudGroup.add(puff1, puff2, puff3);
         skyGroup.add(cloudGroup);
+        let cloudTargetScaleX = 1;
 
-        // Rain
         const rainGeo = new THREE.BufferGeometry();
-        const rainCount = 300;
+        const rainCount = 400;
         const rainPos = new Float32Array(rainCount * 3);
         for(let i=0; i<rainCount; i++) {
-            rainPos[i*3] = (Math.random()-0.5)*12;
-            rainPos[i*3+1] = -Math.random()*25;
+            rainPos[i*3] = (Math.random()-0.5)*15;
+            rainPos[i*3+1] = -Math.random()*20;
             rainPos[i*3+2] = (Math.random()-0.5)*4;
         }
         rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPos, 3));
         const rainMat = new THREE.PointsMaterial({ color: 0x42A5F5, size: 0.6, transparent: true, opacity: 0 });
         const rainSystem = new THREE.Points(rainGeo, rainMat);
         cloudGroup.add(rainSystem);
-        let isRaining = false;
+        
+        let rainTimer = 0;
         let rainIntensity = 0;
 
-        // Rainbow (Triggered by Hands Up)
-        const rainbowGeo = new THREE.TorusGeometry(30, 3, 16, 100, Math.PI);
+        // Rainbow
+        const rainbowGeo = new THREE.TorusGeometry(22, 1.8, 16, 100, Math.PI);
         const rainbowMat = new THREE.MeshBasicMaterial({ 
             color: 0xffffff, transparent: true, opacity: 0, 
             map: createRainbowTexture(), side: THREE.DoubleSide 
         });
         const rainbow = new THREE.Mesh(rainbowGeo, rainbowMat);
-        rainbow.position.set(0, -5, -15);
+        rainbow.position.set(0, -5, -5);
         skyGroup.add(rainbow);
 
         function createRainbowTexture() {
@@ -202,20 +189,44 @@
             ctx.fillStyle = grad; ctx.fillRect(0,0,256,1);
             return new THREE.CanvasTexture(canvas);
         }
-        let showRainbow = false;
 
-        // Sonic Rings System
-        const rings = [];
-        const ringGeo = new THREE.TorusGeometry(1, 0.4, 16, 64);
-        function spawnSonicRing() {
-            const mat = new THREE.MeshBasicMaterial({ 
-                color: brandColors[Math.floor(Math.random() * brandColors.length)], 
-                transparent: true, opacity: 1, blending: THREE.AdditiveBlending 
-            });
-            const ring = new THREE.Mesh(ringGeo, mat);
-            ring.position.set(0, 15, -10);
-            scene.add(ring);
-            rings.push({ mesh: ring, scale: 1, opacity: 1 });
+        // --- Player Silhouette ---
+        const cutoutCanvas = document.getElementById('cutout_canvas');
+        const cutoutCtx = cutoutCanvas.getContext('2d');
+        const cutoutTex = new THREE.CanvasTexture(cutoutCanvas);
+        cutoutTex.colorSpace = THREE.SRGBColorSpace;
+
+        const silhouetteGeo = new THREE.PlaneGeometry(80, 60);
+        const silhouetteMat = new THREE.MeshBasicMaterial({
+            map: cutoutTex, transparent: true, side: THREE.DoubleSide, depthWrite: false
+        });
+        const silhouetteMesh = new THREE.Mesh(silhouetteGeo, silhouetteMat);
+        silhouetteMesh.position.set(0, 15, -35); 
+        scene.add(silhouetteMesh);
+
+        // --- Hand Trackers & Sonic Rings ---
+        const trackerGeo = new THREE.SphereGeometry(0.8, 16, 16);
+        const trackerMat = new THREE.MeshBasicMaterial({ color: 0x00FF00, transparent: true, opacity: 0.8 });
+        const leftHandTracker = new THREE.Mesh(trackerGeo, trackerMat);
+        const rightHandTracker = new THREE.Mesh(trackerGeo, trackerMat);
+        scene.add(leftHandTracker, rightHandTracker);
+
+        let leftAirTime = 0, rightAirTime = 0;
+        const ringGeo = new THREE.RingGeometry(1, 1.5, 32);
+        const ringMat = new THREE.MeshBasicMaterial({ color: 0x00FFFF, transparent: true, opacity: 0, side: THREE.DoubleSide });
+        const sonicRings = [
+            { mesh: new THREE.Mesh(ringGeo, ringMat.clone()), active: false, scale: 1, age: 0 },
+            { mesh: new THREE.Mesh(ringGeo, ringMat.clone()), active: false, scale: 1, age: 0 }
+        ];
+        scene.add(sonicRings[0].mesh, sonicRings[1].mesh);
+
+        function triggerSonicRing(idx, pos) {
+            if(sonicRings[idx].active) return;
+            sonicRings[idx].active = true;
+            sonicRings[idx].scale = 1;
+            sonicRings[idx].age = 0;
+            sonicRings[idx].mesh.position.copy(pos);
+            sonicRings[idx].mesh.material.opacity = 0.8;
         }
 
         // --- Grass System ---
@@ -225,7 +236,7 @@
         const windCtx = windCanvas.getContext('2d');
         const windTex = new THREE.CanvasTexture(windCanvas);
 
-        const numGrass = 40000; // Thicker grass
+        const numGrass = 35000;
         const grassGeo = new THREE.PlaneGeometry(0.2, 4.0, 1, 4);
         grassGeo.translate(0, 2.0, 0);
 
@@ -242,19 +253,19 @@
                 #include <begin_vertex>
                 vMyUv = uv;
                 vec3 instPos = vec3(instanceMatrix[3][0], instanceMatrix[3][1], instanceMatrix[3][2]);
-                vec2 mapUv = vec2((instPos.x + 40.0) / 80.0, (instPos.z + 15.0) / 30.0);
+                vec2 mapUv = vec2((instPos.x + 40.0) / 80.0, (instPos.z + 10.0) / 35.0);
                 float windForce = texture2D(windMap, mapUv).r;
                 float naturalWind = sin(time * 2.0 + instPos.x * 0.5) * 0.15;
                 if (position.y > 0.0) {
                     transformed.x += naturalWind * position.y;
-                    transformed.x += windForce * 3.5 * position.y;
-                    transformed.z -= windForce * 3.5 * position.y;
+                    transformed.x += windForce * 2.5 * position.y;
+                    transformed.z -= windForce * 2.5 * position.y;
                 }
             `);
             shader.fragmentShader = `varying vec2 vMyUv;` + shader.fragmentShader;
             shader.fragmentShader = shader.fragmentShader.replace(`#include <color_fragment>`, `
                 #include <color_fragment>
-                vec3 rootColor = vec3(0.01, 0.15, 0.02);
+                vec3 rootColor = vec3(0.08, 0.35, 0.08); // Brighter green for visibility
                 diffuseColor.rgb = mix(rootColor, diffuseColor.rgb, vMyUv.y);
             `);
         };
@@ -262,49 +273,26 @@
         const grassMesh = new THREE.InstancedMesh(grassGeo, grassMat, numGrass);
         const dummy = new THREE.Object3D();
         for(let i = 0; i < numGrass; i++) {
-            dummy.position.set((Math.random() - 0.5) * 80, -2, (Math.random() - 0.5) * 30 - 5);
+            dummy.position.set((Math.random() - 0.5) * 80, 0, (Math.random() - 0.5) * 35 + 5); // Shifted forward to Z: -12.5 to 22.5
             dummy.rotation.y = Math.random() * Math.PI;
-            dummy.scale.setScalar(0.4 + Math.random() * 0.6);
+            dummy.scale.setScalar(0.5 + Math.random() * 0.7);
             dummy.updateMatrix();
             grassMesh.setMatrixAt(i, dummy.matrix);
-            grassMesh.setColorAt(i, new THREE.Color().setHSL(0.28 + Math.random() * 0.05, 0.8, 0.3 + Math.random() * 0.2));
+            // Brighter, more saturated green
+            grassMesh.setColorAt(i, new THREE.Color().setHSL(0.28 + Math.random() * 0.06, 0.9, 0.45 + Math.random() * 0.2));
         }
         scene.add(grassMesh);
 
-        // --- Player Silhouette ---
-        const cutoutCanvas = document.getElementById('cutout_canvas');
-        const cutoutCtx = cutoutCanvas.getContext('2d');
-        const cutoutTex = new THREE.CanvasTexture(cutoutCanvas);
-        cutoutTex.colorSpace = THREE.SRGBColorSpace;
-
-        const silhouetteGeo = new THREE.PlaneGeometry(80, 60); 
-        const silhouetteMat = new THREE.MeshBasicMaterial({
-            map: cutoutTex, transparent: true, side: THREE.DoubleSide, depthWrite: false
-        });
-        const silhouetteMesh = new THREE.Mesh(silhouetteGeo, silhouetteMat);
-        silhouetteMesh.position.set(0, 15, -10); // Mixed inside the grass
-        scene.add(silhouetteMesh);
-
-
-        // --- Visual Tracking Indicators ---
-        const trackerGeo = new THREE.SphereGeometry(0.8, 16, 16);
-        const trackerMat = new THREE.MeshBasicMaterial({ color: 0x00FF00, transparent: true, opacity: 0.8 });
-
-        const leftHandTracker = new THREE.Mesh(trackerGeo, trackerMat);
-        const rightHandTracker = new THREE.Mesh(trackerGeo, trackerMat);
-        scene.add(leftHandTracker, rightHandTracker);
-
-        // --- Grounded Flower ---
+        // --- Giant Flower ---
         const flowerGroup = new THREE.Group();
-        flowerGroup.position.set(0, -6, 0); // Planted firmly near the ground
-        flowerGroup.scale.setScalar(0.7); // Better proportions
+        flowerGroup.position.set(0, 0, 10); 
         scene.add(flowerGroup);
 
-        const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.8, 14, 16).translate(0, 7, 0), new THREE.MeshStandardMaterial({ color: 0x4CAF50 }));
+        const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.8, 12, 16).translate(0, 6, 0), new THREE.MeshStandardMaterial({ color: 0x4CAF50 }));
         flowerGroup.add(stem);
 
         const flowerHead = new THREE.Group();
-        flowerHead.position.y = 14;
+        flowerHead.position.y = 12;
         flowerGroup.add(flowerHead);
 
         const petalShape = new THREE.Shape();
@@ -317,7 +305,7 @@
             const petal = new THREE.Mesh(petalGeo, petalMat);
             petal.rotation.y = (i / 12) * Math.PI * 2;
             petal.userData.baseRotY = petal.rotation.y;
-            petal.rotation.x = 0.5; // Starts closed
+            petal.rotation.x = 0.5; 
             flowerHead.add(petal); petals.push(petal);
         }
         const center = new THREE.Mesh(new THREE.SphereGeometry(2.5, 32, 16).scale(1, 0.4, 1), new THREE.MeshStandardMaterial({ color: 0xFFC107 }));
@@ -325,28 +313,24 @@
 
         let flowerInteraction = 0;
 
-        // Pollen System
+        // Pollen
         const pollenGeo = new THREE.BufferGeometry();
-        const pollenPos = new Float32Array(200 * 3);
+        const pollenPos = new Float32Array(300 * 3);
         const pollenVel = [];
-        for(let i=0; i<200; i++) { pollenPos[i*3+1] = -100; pollenVel.push(new THREE.Vector3()); }
+        for(let i=0; i<300; i++) { pollenPos[i*3+1] = -100; pollenVel.push(new THREE.Vector3()); }
         pollenGeo.setAttribute('position', new THREE.BufferAttribute(pollenPos, 3));
         const pollenMat = new THREE.PointsMaterial({ color: 0xFFD700, size: 2.5, transparent: true, blending: THREE.AdditiveBlending });
         const pollenSys = new THREE.Points(pollenGeo, pollenMat);
         scene.add(pollenSys);
         let pIdx = 0;
 
-        // --- 3. MEDIAPIPE AI TRACKING LOGIC ---
+        // --- 3. MEDIAPIPE AI TRACKING ---
         const videoElement = document.getElementById('input_video');
         let aiInitialized = false;
-        let handsUpTimer = 0;
-
-        // 2D distance helper to ignore messy Z-depth issues when touching UI elements
-        function dist2D(v1, v2) { return Math.hypot(v1.x - v2.x, v1.y - v2.y); }
 
         function getThreeCoords(landmark, zDepth) {
-            const x = (1 - landmark.x - 0.5) * 80;
-            const y = -(landmark.y - 0.5) * 60 + 15;
+            const x = (1 - landmark.x - 0.5) * 80; 
+            const y = -(landmark.y - 0.5) * 60 + 15; 
             return new THREE.Vector3(x, y, zDepth);
         }
 
@@ -375,76 +359,65 @@
 
             if (results.poseLandmarks) {
                 const lm = results.poseLandmarks;
-
-                const w1 = getThreeCoords(lm[15], -10); 
-                const w2 = getThreeCoords(lm[16], -10);
-                const f1 = getThreeCoords(lm[27], -10);
-                const f2 = getThreeCoords(lm[28], -10);
+                const w1 = getThreeCoords(lm[15], -20); 
+                const w2 = getThreeCoords(lm[16], -20);
+                const f1 = getThreeCoords(lm[27], 5);   
+                const f2 = getThreeCoords(lm[28], 5);
 
                 leftHandTracker.position.copy(w1);
                 rightHandTracker.position.copy(w2);
 
-                // Grass Wind (Both feet and hands interact with grass now)
-                [w1, w2, f1, f2].forEach(pt => {
-                    const tx = ((pt.x + 40) / 80) * mapSize;
-                    // Approximate depth on the ground plane based on screen Y
-                    const mappedZ = (pt.y / 30) * 15; 
-                    const ty = ((mappedZ + 15) / 30) * mapSize;
-                    
+                // Grass Wind (Feet)
+                [f1, f2].forEach(foot => {
+                    const tx = ((foot.x + 40) / 80) * mapSize;
+                    const ty = ((foot.z + 10) / 35) * mapSize;
                     windCtx.beginPath();
-                    const g = windCtx.createRadialGradient(tx, ty, 0, tx, ty, 15);
+                    const g = windCtx.createRadialGradient(tx, ty, 0, tx, ty, 20);
                     g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(1, 'rgba(255,255,255,0)');
                     windCtx.fillStyle = g;
-                    windCtx.arc(tx, ty, 15, 0, Math.PI*2); windCtx.fill();
+                    windCtx.arc(tx, ty, 20, 0, Math.PI*2); windCtx.fill();
                 });
 
-                // Hands Up Gesture (Wrists higher than Shoulders - smaller Y is higher)
-                if (lm[15].y < lm[11].y && lm[16].y < lm[12].y) {
-                    handsUpTimer++;
-                    if (handsUpTimer > 15) { // Held for ~0.5s
-                        showRainbow = true;
-                        spawnSonicRing();
-                        handsUpTimer = 0; // reset
-                    }
-                } else {
-                    handsUpTimer = 0;
+                // Sonic Rings Logic (Hand elevated > 25 units)
+                if (w1.y > 25) { leftAirTime += 0.05; } else { leftAirTime = 0; }
+                if (w2.y > 25) { rightAirTime += 0.05; } else { rightAirTime = 0; }
+
+                if (leftAirTime > 3.0) { triggerSonicRing(0, w1); leftAirTime = -5; /* cooldown */ }
+                if (rightAirTime > 3.0) { triggerSonicRing(1, w2); rightAirTime = -5; }
+
+                // Cloud & Rain Interaction
+                const cloudWorld = new THREE.Vector3(20, 27, -25);
+                if (w1.distanceTo(cloudWorld) < 18 || w2.distanceTo(cloudWorld) < 18) {
+                    rainTimer = 6.0; // 6 seconds of rain
                 }
 
-                // Interaction 2D checks
-                const cloudPos = new THREE.Vector3(20, 27, 0);
-                if (dist2D(w1, cloudPos) < 15 || dist2D(w2, cloudPos) < 15) isRaining = true;
-
-                const sunPos = new THREE.Vector3(-25, 27, 0);
-                if (dist2D(w1, sunPos) < 15 || dist2D(w2, sunPos) < 15) {
-                    sunInteraction = 1;
+                // Sun Interaction
+                const sunWorld = new THREE.Vector3(-25, 27, -25);
+                if (w1.distanceTo(sunWorld) < 18 || w2.distanceTo(sunWorld) < 18) {
+                    sunInteraction = Math.min(1, sunInteraction + 0.1);
                 } else {
-                    sunInteraction = Math.max(0, sunInteraction - 0.05);
+                    sunInteraction = Math.max(0, sunInteraction - 0.02);
                 }
 
-                // Flower Center mapped to 2D Screen Space roughly (X=0, Y=4 due to height)
-                const flowerPos = new THREE.Vector3(0, 4, 0);
-                if (dist2D(w1, flowerPos) < 15 || dist2D(w2, flowerPos) < 15 || dist2D(f1, flowerPos) < 15) {
-                    flowerInteraction += 0.1;
+                // Flower Bloom (Requires BOTH hands close)
+                const flowerWorld = new THREE.Vector3(0, 10, 10);
+                if (w1.distanceTo(flowerWorld) < 30 && w2.distanceTo(flowerWorld) < 30) {
+                    flowerInteraction = Math.min(1, flowerInteraction + 0.05);
                 } else {
-                    flowerInteraction -= 0.05;
+                    flowerInteraction = Math.max(0, flowerInteraction - 0.02);
                 }
-                flowerInteraction = THREE.MathUtils.clamp(flowerInteraction, 0, 1);
             }
         }
 
-        const pose = new Pose({
-            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
-        });
+        const pose = new Pose({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}` });
         pose.setOptions({
-            modelComplexity: 1, smoothLandmarks: true,
-            enableSegmentation: true, smoothSegmentation: true,
+            modelComplexity: 1, smoothLandmarks: true, enableSegmentation: true, smoothSegmentation: true,
             minDetectionConfidence: 0.5, minTrackingConfidence: 0.5
         });
         pose.onResults(onPoseResults);
 
         const cameraUtils = new Camera(videoElement, {
-            onFrame: async () => { await pose.send({image: videoElement}); },
-            width: 640, height: 480
+            onFrame: async () => { await pose.send({image: videoElement}); }, width: 640, height: 480
         });
         cameraUtils.start();
 
@@ -454,80 +427,80 @@
             requestAnimationFrame(animate);
             const time = Date.now() * 0.001;
 
+            // Fade grass wind
             windCtx.fillStyle = 'rgba(0,0,0,0.1)';
             windCtx.fillRect(0,0,mapSize,mapSize);
             windTex.needsUpdate = true;
             grassParams.time.value += 0.016;
 
-            // Sun Animation (Rotates and Pulses)
-            sunGroup.rotation.z -= 0.005;
-            sunGroup.scale.setScalar(1 + Math.sin(time*5) * 0.15 * sunInteraction);
-            sun.material.color.setHex(sunInteraction > 0.5 ? 0xFF9800 : 0xFFEB3B);
+            // Grandiose Sun Animation
+            sunTargetScale = 1 + (sunInteraction * 2.5); // Grows very big
+            sun.scale.setScalar(sun.scale.x + (sunTargetScale - sun.scale.x) * 0.1);
+            sun.material.color.setHex(sunInteraction > 0.3 ? 0xFF9800 : 0xFFEB3B);
 
-            // Cloud Animation (Hovering)
-            cloudGroup.position.y = 5 + Math.sin(time * 2) * 1.5;
+            // Sunbeams (sprinkles)
+            const bArr = beamGeo.attributes.position.array;
+            if (sunInteraction > 0.5) {
+                for(let k=0; k<3; k++) {
+                    let idx = Math.floor(Math.random() * 150) * 3;
+                    bArr[idx] = sun.position.x + (Math.random()-0.5)*20;
+                    bArr[idx+1] = sun.position.y;
+                    bArr[idx+2] = sun.position.z + (Math.random()-0.5)*5;
+                }
+            }
+            for(let i=0; i<150; i++) {
+                if(bArr[i*3+1] > -30) {
+                    bArr[i*3+1] -= 0.3; // fall speed
+                    bArr[i*3] += Math.sin(time*2 + i)*0.05; // flutter
+                }
+            }
+            beamGeo.attributes.position.needsUpdate = true;
 
-            // Rain Animation
-            if(isRaining) {
+            // Grandiose Cloud & Rain Animation
+            cloudTargetScaleX = 1 + (rainTimer > 0 ? 1.5 : 0); // Cloud spreads wide
+            cloudGroup.scale.x += (cloudTargetScaleX - cloudGroup.scale.x) * 0.05;
+            
+            if(rainTimer > 0) {
                 rainIntensity = Math.min(1, rainIntensity + 0.05);
-                rainMat.opacity = rainIntensity;
+                rainTimer -= 0.016;
                 const pos = rainGeo.attributes.position.array;
                 for(let i=0; i<rainCount; i++) {
-                    pos[i*3+1] -= 0.8; 
-                    if(pos[i*3+1] < -20) { pos[i*3+1] = 5; pos[i*3] = (Math.random()-0.5)*15; }
+                    pos[i*3+1] -= 1.2; // Fast fall
+                    if(pos[i*3+1] < -20) { pos[i*3+1] = 5; pos[i*3] = (Math.random()-0.5)*25; } // wider rain spread
                 }
                 rainGeo.attributes.position.needsUpdate = true;
-                if(Math.random() < 0.01) isRaining = false;
             } else {
                 rainIntensity = Math.max(0, rainIntensity - 0.02);
-                rainMat.opacity = rainIntensity;
+            }
+            rainMat.opacity = rainIntensity;
+
+            // Rainbow after rain
+            if (rainTimer <= 0 && rainIntensity < 0.1 && rainbowMat.opacity < 0.8) {
+                rainbowMat.opacity += 0.005; 
+            } else if (rainTimer > 0) {
+                rainbowMat.opacity -= 0.05; 
             }
 
-            // Rainbow Animation
-            if (showRainbow) {
-                rainbowMat.opacity = Math.min(0.9, rainbowMat.opacity + 0.01);
-                rainbow.scale.setScalar(1 + Math.sin(time) * 0.05); // Majestic pulsing
-                if (Math.random() < 0.002) showRainbow = false; // Turn off eventually
-            } else {
-                rainbowMat.opacity = Math.max(0, rainbowMat.opacity - 0.01);
-            }
-
-            // Sonic Rings Expansion
-            for (let i = rings.length - 1; i >= 0; i--) {
-                const r = rings[i];
-                r.scale += 0.5;
-                r.opacity -= 0.02;
-                r.mesh.scale.setScalar(r.scale);
-                r.mesh.material.opacity = r.opacity;
-                if (r.opacity <= 0) {
-                    scene.remove(r.mesh);
-                    rings.splice(i, 1);
-                }
-            }
-
-            // Flower Bloom Animation
+            // Flower Bloom Animation (Two hands required now)
             flowerGroup.rotation.z = Math.sin(time) * 0.05;
-            flowerGroup.scale.setScalar(0.7 + flowerInteraction * 0.2); // Swells up correctly now
-            
-            // Bend stem slightly towards hands if interacting
-            stem.rotation.z = THREE.MathUtils.lerp(0, Math.sin(time*2)*0.1, flowerInteraction);
+            flowerGroup.scale.setScalar(1.0 + flowerInteraction * 0.3);
 
             petals.forEach((petal, i) => {
-                petal.rotation.x = THREE.MathUtils.lerp(0.5, 2.0, flowerInteraction); // Dramatically opens
+                petal.rotation.x = THREE.MathUtils.lerp(0.5, 2.0, flowerInteraction);
                 petal.rotation.x += Math.sin(time * 2 + petal.userData.baseRotY) * 0.05;
             });
 
-            if (flowerInteraction > 0.6) {
+            if (flowerInteraction > 0.8) {
                 for(let k=0; k<3; k++) {
                     pollenPos[pIdx*3] = flowerHead.position.x + (Math.random()-0.5)*4;
                     pollenPos[pIdx*3+1] = flowerHead.position.y + flowerGroup.position.y;
                     pollenPos[pIdx*3+2] = flowerGroup.position.z + (Math.random()-0.5)*4;
-                    pollenVel[pIdx].set((Math.random()-0.5)*0.3, Math.random()*0.4 + 0.1, (Math.random()-0.5)*0.3);
-                    pIdx = (pIdx + 1) % 200;
+                    pollenVel[pIdx].set((Math.random()-0.5)*0.2, Math.random()*0.3 + 0.1, (Math.random()-0.5)*0.2);
+                    pIdx = (pIdx + 1) % 300;
                 }
             }
             const pArr = pollenGeo.attributes.position.array;
-            for(let i=0; i<200; i++) {
+            for(let i=0; i<300; i++) {
                 if(pArr[i*3+1] > -50) {
                     pArr[i*3] += pollenVel[i].x; pArr[i*3+1] += pollenVel[i].y; pArr[i*3+2] += pollenVel[i].z;
                     pArr[i*3] += Math.sin(time*3+i)*0.03;
@@ -536,14 +509,21 @@
             }
             pollenGeo.attributes.position.needsUpdate = true;
 
-            const pulse = 0.8 + Math.sin(time*10)*0.2;
-            leftHandTracker.scale.setScalar(pulse); rightHandTracker.scale.setScalar(pulse);
+            // Sonic Rings Pulse
+            sonicRings.forEach(ring => {
+                if(ring.active) {
+                    ring.scale += 0.15;
+                    ring.age += 0.02;
+                    ring.mesh.scale.setScalar(ring.scale);
+                    ring.mesh.material.opacity = 1 - ring.age;
+                    if(ring.age >= 1) ring.active = false;
+                }
+            });
 
             renderer.render(scene, camera);
         }
         animate();
 
-        // --- 5. UTILS ---
         document.getElementById('fullscreen-btn').addEventListener('click', () => {
             if (!document.fullscreenElement) document.documentElement.requestFullscreen();
             else document.exitFullscreen();
