@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BxCM Magical Garden</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Quicksand:wght@600;700&display=swap');
+
+        body { margin: 0; overflow: hidden; background: #0a1710; font-family: 'Quicksand', sans-serif; }
+        canvas { display: block; }
+
+        /* UI Overlays */
+        #ui-overlay {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        .bxcm-logo {
+            font-size: 1.8rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+            background: rgba(0,0,0,0.4);
+            padding: 10px 20px;
+            border-radius: 50px;
+            display: inline-block;
+        }
+
+        /* BxCM Brand Colors */
+        .c-y { color: #FFC107; }
+        .c-o { color: #FF5722; }
+        .c-m { color: #E91E63; }
+        .c-g { color: #4CAF50; }
+        .c-b { color: #2196F3; }
+
+        #camera-settings {
+            background: rgba(0,0,0,0.8);
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.2);
+            pointer-events: auto;
+            max-width: 300px;
+            margin-top: 15px;
+        }
+
+        select {
+            padding: 8px;
+            font-size: 1rem;
+            border-radius: 4px;
+            margin-top: 5px;
+            width: 100%;
+            background: #222;
+            color: white;
+            border: 1px solid #555;
+        }
+
+        #video-container {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            width: 240px;
+            height: 180px;
+            border: 2px solid rgba(255,255,255,0.5);
+            border-radius: 8px;
+            overflow: hidden;
+            transform: scaleX(-1);
+            opacity: 0.8;
+            z-index: 10;
+            display: none; 
+        }
+
+        video { width: 100%; height: 100%; object-fit: cover; }
+
+        /* Welcome Message */
+        #center-message {
+            position: absolute;
+            top: 40%;
+            width: 100%;
+            text-align: center;
+            color: #fff;
+            font-size: 3rem;
+            text-shadow: 0px 5px 15px rgba(0,0,0,0.8);
+            pointer-events: none;
+            z-index: 20;
+            transition: opacity 1s ease;
+        }
+
+        .pulse { animation: pulse 3s infinite; }
+
+        @keyframes pulse {
+            0% { opacity: 0.6; transform: scale(0.98); }
+            50% { opacity: 1; transform: scale(1.02); }
+            100% { opacity: 0.6; transform: scale(0.98); }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="center-message" class="pulse">Wave your hands<br>to grow a magical garden!</div>
+
+    <div id="ui-overlay">
+        <div class="bxcm-logo">
+            <span class="c-y">B</span><span class="c-o">R</span><span class="c-m">O</span><span class="c-g">N</span><span class="c-b">X</span> Children's Museum
+        </div>
+        <div id="camera-settings">
+            <label for="camera-select">🎥 Select Sensor/Camera:</label>
+            <select id="camera-select">
+                <option value="">Loading cameras...</option>
+            </select>
+        </div>
+    </div>
+
+    <div id="video-container">
+        <video id="webcam" autoplay playsinline></video>
+    </div>
+
+    <canvas id="motion-canvas" style="display:none;"></canvas>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "lil-gui": "https://unpkg.com/lil-gui@0.19.1/dist/lil-gui.esm.min.js"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import GUI from 'lil-gui';
+
+        // --- Configuration & State ---
+        const config = {
+            motionSensitivity: 35,
+            flowerDensity: 2.5, // Minimum distance between flowers
+            gardenLifespan: 400, // How many frames a flower stays alive before shrinking
+            showWebcam: false,
+            goFullscreen: () => {
+                if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+                else document.exitFullscreen();
+            }
+        };
+
+        const brandColors = [0xFFC107, 0xFF5722, 0xE91E63, 0x4CAF50, 0x2196F3, 0x9C27B0, 0x00BCD4]; 
+        let hasStarted = false;
+
+        // --- Setup Admin GUI ---
+        const gui = new GUI({ title: '🌱 Garden Admin Panel' });
+        const motionFolder = gui.addFolder('Sensor & Timing');
+        motionFolder.add(config, 'motionSensitivity', 10, 80, 1).name('Motion Sensitivity');
+        motionFolder.add(config, 'flowerDensity', 1, 5, 0.1).name('Flower Spacing');
+        motionFolder.add(config, 'gardenLifespan', 100, 1000, 10).name('Flower Lifespan');
+        motionFolder.add(config, 'showWebcam').name('Show Webcam').onChange(v => {
+            if (!document.fullscreenElement) document.getElementById('video-container').style.display = v ? 'block' : 'none';
+        });
+        gui.add(config, 'goFullscreen').name('Toggle Fullscreen (F)');
+
+        // --- Setup Three.js Scene ---
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x0a1710, 0.015);
+
+        // Orthographic-like wide perspective for the wall
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 0, 25); 
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setClearColor(0x0a1710, 1);
+        document.body.appendChild(renderer.domElement);
+
+        // Dreamy Lighting
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+        const dirLight = new THREE.DirectionalLight(0xfff5e6, 1.2);
+        dirLight.position.set(10, 20, 15);
+        scene.add(dirLight);
+
+        // --- Garden Elements ---
+        const flowers = [];
+        const fireflies = [];
+
+        // Geometries for performance sharing
+        const centerGeo = new THREE.SphereGeometry(0.3, 16, 16);
+        const petalGeo = new THREE.SphereGeometry(0.5, 16, 16);
+        petalGeo.scale(1, 0.2, 1.5); // Flatten and stretch sphere into a petal shape
+
+        function createFlower(x, y) {
+            const flowerGroup = new THREE.Group();
+            
+            // Randomize color and scale
+            const colorHex = brandColors[Math.floor(Math.random() * brandColors.length)];
+            const targetScale = 0.8 + Math.random() * 0.7;
+
+            // Center
+            const centerMat = new THREE.MeshStandardMaterial({ color: 0xFFC107, roughness: 0.4 });
+            const center = new THREE.Mesh(centerGeo, centerMat);
+            flowerGroup.add(center);
+
+            // Petals (5 petals around center)
+            const petalMat = new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.3 });
+            for(let i=0; i<5; i++) {
+                const petal = new THREE.Mesh(petalGeo, petalMat);
+                const angle = (i / 5) * Math.PI * 2;
+                petal.position.x = Math.cos(angle) * 0.6;
+                petal.position.y = Math.sin(angle) * 0.6;
+                petal.rotation.z = angle;
+                // Add a slight tilt to the petal
+                petal.rotation.x = 0.2; 
+                flowerGroup.add(petal);
+            }
+
+            flowerGroup.position.set(x, y, 0);
+            flowerGroup.scale.set(0, 0, 0); // Start tiny for pop-in animation
+            
+            // Random spin
+            flowerGroup.rotation.z = Math.random() * Math.PI;
+
+            scene.add(flowerGroup);
+            
+            flowers.push({
+                mesh: flowerGroup,
+                targetScale: targetScale,
+                age: 0,
+                state: 'growing' // growing, blooming, shrinking
+            });
+        }
+
+        // Firefly trails for extra magic
+        const fireflyGeo = new THREE.SphereGeometry(0.08, 8, 8);
+        for(let i=0; i<80; i++) {
+            const mat = new THREE.MeshBasicMaterial({ color: 0xFFFF88, transparent: true, blending: THREE.AdditiveBlending });
+            const fly = new THREE.Mesh(fireflyGeo, mat);
+            fly.visible = false;
+            scene.add(fly);
+            fireflies.push({ mesh: fly, life: 0, vel: new THREE.Vector3() });
+        }
+
+        function spawnFireflies(x, y) {
+            for(let i=0; i<fireflies.length; i++) {
+                if(fireflies[i].life <= 0) {
+                    const fly = fireflies[i];
+                    fly.mesh.position.set(x + (Math.random()-0.5)*2, y + (Math.random()-0.5)*2, 0.5);
+                    fly.mesh.visible = true;
+                    fly.life = 1.0;
+                    fly.vel.set((Math.random()-0.5)*0.05, Math.random()*0.08 + 0.02, (Math.random()-0.5)*0.05); // Float up
+                    break; 
+                }
+            }
+        }
+
+        // --- Camera & Motion Setup ---
+        const video = document.getElementById('webcam');
+        const cameraSelect = document.getElementById('camera-select');
+        const motionCanvas = document.getElementById('motion-canvas');
+        const mCtx = motionCanvas.getContext('2d', { willReadFrequently: true });
+
+        const GRID_W = 60; 
+        const GRID_H = 40;
+        motionCanvas.width = GRID_W;
+        motionCanvas.height = GRID_H;
+
+        let prevFrame = null;
+        let currentStream = null;
+
+        // Wall dimensions for mapping screen coords to 3D space
+        const wallWidth = 35;
+        const wallHeight = 22;
+
+        async function getCameras() {
+            try {
+                await navigator.mediaDevices.getUserMedia({ video: true });
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const videoDevices = devices.filter(device => device.kind === 'videoinput');
+
+                cameraSelect.innerHTML = '';
+                videoDevices.forEach((device, index) => {
+                    const option = document.createElement('option');
+                    option.value = device.deviceId;
+                    option.text = device.label || `Camera ${index + 1}`;
+                    cameraSelect.appendChild(option);
+                });
+
+                if (videoDevices.length > 0) startStream(videoDevices[0].deviceId);
+            } catch (err) {
+                cameraSelect.innerHTML = '<option>Permission Denied/Error</option>';
+            }
+        }
+
+        async function startStream(deviceId) {
+            if (currentStream) currentStream.getTracks().forEach(track => track.stop());
+            try {
+                currentStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: deviceId ? { deviceId: { exact: deviceId }, width: 640, height: 480 } : true 
+                });
+                video.srcObject = currentStream;
+            } catch (err) { console.error(err); }
+        }
+        cameraSelect.addEventListener('change', (e) => startStream(e.target.value));
+
+        // --- Motion Tracking ---
+        function checkMotion() {
+            if (video.readyState !== video.HAVE_ENOUGH_DATA) return;
+
+            mCtx.drawImage(video, 0, 0, GRID_W, GRID_H);
+            const currentFrame = mCtx.getImageData(0, 0, GRID_W, GRID_H).data;
+
+            if (prevFrame) {
+                for (let y = 0; y < GRID_H; y+=2) { 
+                    for (let x = 0; x < GRID_W; x+=2) {
+                        const i = (y * GRID_W + x) * 4;
+
+                        const rDiff = Math.abs(currentFrame[i] - prevFrame[i]);
+                        const gDiff = Math.abs(currentFrame[i+1] - prevFrame[i+1]);
+                        const bDiff = Math.abs(currentFrame[i+2] - prevFrame[i+2]);
+
+                        if (rDiff + gDiff + bDiff > config.motionSensitivity) {
+                            
+                            // Hide intro message on first move
+                            if(!hasStarted) {
+                                hasStarted = true;
+                                document.getElementById('center-message').style.opacity = 0;
+                            }
+
+                            // Convert to 3D world coordinates
+                            const normX = (1 - (x / GRID_W)) * 2 - 1; // Mirrored
+                            const normY = -( (y / GRID_H) * 2 - 1 );
+                            
+                            const worldX = normX * (wallWidth / 2);
+                            const worldY = normY * (wallHeight / 2);
+
+                            // Check distance to existing flowers to prevent overcrowding
+                            let tooClose = false;
+                            for(let f of flowers) {
+                                const dist = Math.hypot(f.mesh.position.x - worldX, f.mesh.position.y - worldY);
+                                if(dist < config.flowerDensity && f.state !== 'shrinking') {
+                                    tooClose = true;
+                                    break;
+                                }
+                            }
+
+                            if(!tooClose) {
+                                createFlower(worldX, worldY);
+                            }
+
+                            // Spawn magic dust randomly on movement
+                            if(Math.random() > 0.7) {
+                                spawnFireflies(worldX, worldY);
+                            }
+                        }
+                    }
+                }
+            }
+            prevFrame = new Uint8ClampedArray(currentFrame);
+        }
+
+        // --- Animation Loop ---
+        function animate() {
+            requestAnimationFrame(animate);
+            checkMotion();
+
+            // Animate Flowers (The Looping Garden Logic)
+            for(let i = flowers.length - 1; i >= 0; i--) {
+                let f = flowers[i];
+                f.age++;
+
+                if(f.state === 'growing') {
+                    // Pop up scale
+                    f.mesh.scale.x += (f.targetScale - f.mesh.scale.x) * 0.1;
+                    f.mesh.scale.y += (f.targetScale - f.mesh.scale.y) * 0.1;
+                    f.mesh.scale.z += (f.targetScale - f.mesh.scale.z) * 0.1;
+                    f.mesh.rotation.z += 0.02; // Twist as it grows
+
+                    if(f.targetScale - f.mesh.scale.x < 0.01) f.state = 'blooming';
+                } 
+                else if (f.state === 'blooming') {
+                    // Gentle breathing animation
+                    const breath = Math.sin(f.age * 0.05) * 0.05;
+                    f.mesh.scale.set(f.targetScale + breath, f.targetScale + breath, f.targetScale + breath);
+
+                    if(f.age > config.gardenLifespan) f.state = 'shrinking';
+                }
+                else if (f.state === 'shrinking') {
+                    // Shrink and spin away
+                    f.mesh.scale.multiplyScalar(0.9);
+                    f.mesh.rotation.z -= 0.05;
+                    
+                    if(f.mesh.scale.x < 0.05) {
+                        scene.remove(f.mesh);
+                        flowers.splice(i, 1); // Remove from array to free up space
+                    }
+                }
+            }
+
+            // Animate Fireflies
+            for(let fly of fireflies) {
+                if(fly.life > 0) {
+                    fly.life -= 0.015;
+                    fly.mesh.position.add(fly.vel);
+                    // Add slight sway
+                    fly.mesh.position.x += Math.sin(Date.now() * 0.005 + fly.life * 10) * 0.02;
+                    fly.mesh.material.opacity = fly.life;
+                    
+                    if(fly.life <= 0) fly.mesh.visible = false;
+                }
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        // --- Fullscreen and UI Logic ---
+        document.addEventListener('fullscreenchange', () => {
+            const uiOverlay = document.getElementById('ui-overlay');
+            const videoContainer = document.getElementById('video-container');
+
+            if (document.fullscreenElement) {
+                uiOverlay.style.display = 'none';
+                videoContainer.style.display = 'none';
+                gui.hide();
+            } else {
+                uiOverlay.style.display = 'block';
+                if(config.showWebcam) videoContainer.style.display = 'block';
+                gui.show();
+            }
+        });
+
+        window.addEventListener('keydown', (e) => {
+            if (e.key.toLowerCase() === 'f') config.goFullscreen();
+        });
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        getCameras();
+        animate();
+    </script>
+</body>
+</html>
