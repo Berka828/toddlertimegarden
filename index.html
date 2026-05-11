@@ -8,7 +8,7 @@
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Quicksand:wght@600;700&display=swap');
 
-        body { margin: 0; overflow: hidden; background: #ffe4e1; font-family: 'Quicksand', sans-serif; }
+        body { margin: 0; overflow: hidden; background: #1a0b2e; font-family: 'Quicksand', sans-serif; }
         canvas { display: block; }
 
         /* UI Overlays */
@@ -28,7 +28,7 @@
             letter-spacing: 2px;
             margin-bottom: 10px;
             text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
-            background: rgba(255,255,255,0.2);
+            background: rgba(255,255,255,0.1);
             backdrop-filter: blur(5px);
             padding: 10px 20px;
             border-radius: 50px;
@@ -87,7 +87,7 @@
             text-align: center;
             color: #fff;
             font-size: 3rem;
-            text-shadow: 0px 5px 15px rgba(0,0,0,0.4);
+            text-shadow: 0px 5px 15px rgba(0,0,0,0.8);
             pointer-events: none;
             z-index: 20;
             transition: opacity 1s ease;
@@ -100,21 +100,11 @@
             50% { opacity: 1; transform: scale(1.02); }
             100% { opacity: 0.8; transform: scale(0.98); }
         }
-
-        /* Silhouette Canvas */
-        #silhouette-canvas {
-            position: absolute;
-            top: 0; left: 0;
-            width: 100vw; height: 100vh;
-            z-index: 5; /* Above 3D scene, below UI */
-            pointer-events: none;
-            opacity: 0.6;
-        }
     </style>
 </head>
 <body>
 
-    <div id="center-message" class="pulse">Run to the wall to grow flowers!<br><span style="font-size: 1.5rem">Touch the sky orbs to change the season!</span></div>
+    <div id="center-message" class="pulse">Wave your hands to bloom the giant flowers!</div>
 
     <div id="ui-overlay">
         <div class="bxcm-logo">
@@ -134,9 +124,6 @@
 
     <!-- Hidden Canvases for Motion Physics -->
     <canvas id="motion-canvas" style="display:none;"></canvas>
-    
-    <!-- Visible overlay for kid silhouettes -->
-    <canvas id="silhouette-canvas"></canvas>
 
     <script type="importmap">
         {
@@ -153,7 +140,7 @@
 
         // --- Configuration & State ---
         const config = {
-            motionSensitivity: 40,
+            motionSensitivity: 35,
             showWebcam: false,
             goFullscreen: () => {
                 if (!document.fullscreenElement) document.documentElement.requestFullscreen();
@@ -172,17 +159,7 @@
         });
         gui.add(config, 'goFullscreen').name('Toggle Fullscreen (F)');
 
-        // --- Silhouette Setup ---
-        const silCanvas = document.getElementById('silhouette-canvas');
-        const silCtx = silCanvas.getContext('2d');
-        function resizeSilhouette() {
-            silCanvas.width = window.innerWidth;
-            silCanvas.height = window.innerHeight;
-        }
-        window.addEventListener('resize', resizeSilhouette);
-        resizeSilhouette();
-
-        // --- 1. Texture Map Physics (Wind & Bloom) ---
+        // --- Texture Map Physics (Wind & Bloom) ---
         const mapSize = 512;
         const windCanvas = document.createElement('canvas');
         windCanvas.width = mapSize; windCanvas.height = mapSize;
@@ -196,50 +173,32 @@
 
         // --- Setup Three.js Scene ---
         const scene = new THREE.Scene();
-        scene.fog = new THREE.FogExp2(0xffe4e1, 0.025); // Initial Spring mist
+        scene.fog = new THREE.FogExp2(0x1a0b2e, 0.02); // Twilight mist
 
         const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 150);
-        camera.position.set(0, 12, 22); 
-        camera.lookAt(0, 2, 0);
+        camera.position.set(0, 8, 25); 
+        camera.lookAt(0, 4, 0);
 
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setClearColor(0xffe4e1, 1);
+        renderer.setClearColor(0x1a0b2e, 1); // Dark twilight background to make silhouette pop
         document.body.appendChild(renderer.domElement);
 
         // Lighting
-        const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6);
+        const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.4);
         scene.add(hemiLight);
-        const dirLight = new THREE.DirectionalLight(0xffeedd, 1.0);
+        const dirLight = new THREE.DirectionalLight(0xffeedd, 0.8);
         dirLight.position.set(20, 40, 15);
         scene.add(dirLight);
-
-        // --- Interactive Season Orbs ---
-        const orbs = [];
-        const seasons = [
-            { name: 'Spring', color: 0xE91E63, fog: 0xffe4e1, root: 0x011f01 }, // Pink
-            { name: 'Autumn', color: 0xFF5722, fog: 0xffb347, root: 0x3a1f00 }, // Orange
-            { name: 'Winter', color: 0x2196F3, fog: 0xe0f7fa, root: 0x556677 }  // Blue
-        ];
-        
-        // Season targets for smooth transitions
-        let targetFogColor = new THREE.Color(seasons[0].fog);
-        let targetRootColor = new THREE.Color(seasons[0].root);
-
-        seasons.forEach((season, index) => {
-            const geo = new THREE.SphereGeometry(1.5, 32, 32);
-            const mat = new THREE.MeshBasicMaterial({ color: season.color });
-            const orb = new THREE.Mesh(geo, mat);
-            // Spread them across the sky
-            orb.position.set((index - 1) * 12, 16, -15);
-            scene.add(orb);
-            orbs.push({ mesh: orb, season: season });
-        });
+        const spotLight = new THREE.SpotLight(0xE91E63, 1000);
+        spotLight.position.set(0, 30, 0);
+        spotLight.angle = Math.PI / 4;
+        scene.add(spotLight);
 
         // --- Realistic Instanced Grass ---
-        const numGrass = 50000;
+        const numGrass = 40000;
         const grassGeo = new THREE.PlaneGeometry(0.15, 2.5, 1, 4);
-        grassGeo.translate(0, 1.25, 0); // Pivot at the ground
+        grassGeo.translate(0, 1.25, 0); 
 
         const grassMat = new THREE.MeshStandardMaterial({ 
             color: 0xffffff,
@@ -247,18 +206,11 @@
             roughness: 0.8
         });
 
-        const grassParams = { 
-            time: { value: 0 }, 
-            windMap: { value: windTex },
-            rootColor: { value: new THREE.Color(seasons[0].root) }
-        };
+        const grassParams = { time: { value: 0 }, windMap: { value: windTex } };
 
-        // Inject custom shaders to bend grass dynamically and change colors
         grassMat.onBeforeCompile = (shader) => {
             shader.uniforms.time = grassParams.time;
             shader.uniforms.windMap = grassParams.windMap;
-            shader.uniforms.rootColor = grassParams.rootColor;
-            
             shader.vertexShader = `
                 uniform float time;
                 uniform sampler2D windMap;
@@ -271,35 +223,26 @@
                 #include <begin_vertex>
                 vMyUv = uv;
                 vec3 instPos = vec3(instanceMatrix[3][0], instanceMatrix[3][1], instanceMatrix[3][2]);
-                
-                // Map position to texture space
                 vec2 mapUv = vec2((instPos.x + 25.0) / 50.0, (instPos.z + 15.0) / 30.0);
                 float windForce = texture2D(windMap, mapUv).r;
-                
-                // Natural gentle wind
                 float naturalWind = sin(time * 2.0 + instPos.x * 0.5 + instPos.z * 0.5) * 0.15;
-                
                 if (position.y > 0.0) {
                     transformed.x += naturalWind * position.y;
-                    
-                    // Bend heavily based on kids movement
                     transformed.x += windForce * 2.5 * position.y;
                     transformed.z -= windForce * 2.5 * position.y;
-                    transformed.y -= windForce * 1.0 * position.y; // squash down
+                    transformed.y -= windForce * 1.0 * position.y; 
                 }
                 `
             );
             
             shader.fragmentShader = `
                 varying vec2 vMyUv;
-                uniform vec3 rootColor;
             ` + shader.fragmentShader;
-            
             shader.fragmentShader = shader.fragmentShader.replace(
                 `#include <color_fragment>`,
                 `
                 #include <color_fragment>
-                // Add vertical gradient to grass (season root color at bottom, bright at tips)
+                vec3 rootColor = vec3(0.02, 0.10, 0.05);
                 diffuseColor.rgb = mix(rootColor, diffuseColor.rgb, vMyUv.y);
                 `
             );
@@ -313,91 +256,103 @@
             dummy.scale.setScalar(0.4 + Math.random() * 0.6);
             dummy.updateMatrix();
             grassMesh.setMatrixAt(i, dummy.matrix);
-            grassMesh.setColorAt(i, new THREE.Color().setHSL(0.28 + Math.random() * 0.06, 0.8, 0.3 + Math.random() * 0.2));
+            grassMesh.setColorAt(i, new THREE.Color().setHSL(0.3 + Math.random() * 0.08, 0.7, 0.2 + Math.random() * 0.2));
         }
         scene.add(grassMesh);
 
-        // --- Instanced Blooming Flowers ---
-        const pCan = document.createElement('canvas');
-        pCan.width = 256; pCan.height = 256;
-        const pCtx = pCan.getContext('2d');
-        pCtx.fillStyle = 'transparent'; pCtx.fillRect(0, 0, 256, 256);
-        pCtx.shadowColor = 'rgba(0,0,0,0.5)'; pCtx.shadowBlur = 6;
-        for(let i=0; i<6; i++) {
-            const a = (i/6) * Math.PI * 2;
-            pCtx.fillStyle = 'white';
-            pCtx.beginPath();
-            pCtx.ellipse(128 + Math.cos(a)*40, 128 + Math.sin(a)*40, 25, 55, a, 0, Math.PI*2);
-            pCtx.fill();
-        }
-        pCtx.shadowBlur = 0;
-        pCtx.fillStyle = '#FFDD00';
-        pCtx.beginPath(); pCtx.arc(128, 128, 25, 0, Math.PI*2); pCtx.fill();
-        const flowerTex = new THREE.CanvasTexture(pCan);
-
-        const numFlowers = 2500;
-        const flowerGeo = new THREE.PlaneGeometry(1.5, 1.5);
-        flowerGeo.translate(0, 0.75, 0); 
+        // --- Live Player Silhouette Map ---
+        // Creates a magical mirror in the background that captures the actual shape of the kids
+        const video = document.getElementById('webcam');
+        const videoTex = new THREE.VideoTexture(video);
+        videoTex.colorSpace = THREE.SRGBColorSpace;
         
-        const flowerMat = new THREE.MeshStandardMaterial({
-            color: 0xffffff,
-            map: flowerTex,
+        const silhouetteGeo = new THREE.PlaneGeometry(60, 45); // 4:3 Aspect
+        const silhouetteMat = new THREE.ShaderMaterial({
+            uniforms: {
+                tDiffuse: { value: videoTex },
+                brandColor: { value: new THREE.Color(0x2196F3) } // BxCM Blue base
+            },
+            vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                    vUv = vec2(1.0 - uv.x, uv.y); // Mirror image
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform sampler2D tDiffuse;
+                uniform vec3 brandColor;
+                varying vec2 vUv;
+                void main() {
+                    vec4 texColor = texture2D(tDiffuse, vUv);
+                    
+                    // Extract brightness to separate kids from background
+                    float luma = dot(texColor.rgb, vec3(0.299, 0.587, 0.114));
+                    
+                    // Thresholding for glowing edge effect
+                    float alpha = smoothstep(0.3, 0.7, luma); 
+                    
+                    // Mix actual camera colors with brand colors for magical feel
+                    vec3 finalColor = mix(brandColor, texColor.rgb, 0.6) * 1.5; 
+                    
+                    gl_FragColor = vec4(finalColor, alpha * 0.5); // 0.5 opacity for hologram look
+                }
+            `,
             transparent: true,
-            alphaTest: 0.1,
-            side: THREE.DoubleSide,
-            roughness: 0.5
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
         });
+        const silhouetteMesh = new THREE.Mesh(silhouetteGeo, silhouetteMat);
+        silhouetteMesh.position.set(0, 15, -15);
+        scene.add(silhouetteMesh);
 
-        const flowerParams = { bloomMap: { value: bloomTex } };
+        // --- Interactive Giant Hero Flowers ---
+        const heroFlowers = [];
+        const petalGeo = new THREE.PlaneGeometry(1.5, 5);
+        petalGeo.translate(0, 2.5, 0); // pivot at base
+        const centerGeo = new THREE.SphereGeometry(1.2, 16, 16);
 
-        flowerMat.onBeforeCompile = (shader) => {
-            shader.uniforms.bloomMap = flowerParams.bloomMap;
-            shader.vertexShader = `
-                uniform sampler2D bloomMap;
-            ` + shader.vertexShader;
+        function createHeroFlower(x, z, colorHex) {
+            const group = new THREE.Group();
             
-            shader.vertexShader = shader.vertexShader.replace(
-                `#include <begin_vertex>`,
-                `
-                #include <begin_vertex>
-                vec3 instPos = vec3(instanceMatrix[3][0], instanceMatrix[3][1], instanceMatrix[3][2]);
-                vec2 mapUv = vec2((instPos.x + 25.0) / 50.0, (instPos.z + 15.0) / 30.0);
-                float bloomForce = texture2D(bloomMap, mapUv).r;
-                
-                // Scale up dramatically when kids trigger the bloom map
-                float targetScale = max(0.001, bloomForce * 1.6);
-                transformed *= targetScale;
-                `
-            );
-        };
+            const centerMat = new THREE.MeshStandardMaterial({ color: 0xFFC107, roughness: 0.2 });
+            const center = new THREE.Mesh(centerGeo, centerMat);
+            group.add(center);
 
-        const flowerMesh = new THREE.InstancedMesh(flowerGeo, flowerMat, numFlowers);
-        for(let i = 0; i < numFlowers; i++) {
-            dummy.position.set((Math.random() - 0.5) * 50, 0, (Math.random() - 0.5) * 30);
-            dummy.rotation.y = Math.random() * Math.PI;
-            dummy.scale.setScalar(0.5 + Math.random() * 0.5);
-            dummy.updateMatrix();
-            flowerMesh.setMatrixAt(i, dummy.matrix);
-            flowerMesh.setColorAt(i, new THREE.Color().setHex(brandColors[i % brandColors.length]));
-        }
-        scene.add(flowerMesh);
+            const petalMat = new THREE.MeshStandardMaterial({ 
+                color: colorHex, 
+                side: THREE.DoubleSide, 
+                roughness: 0.4 
+            });
 
-        // --- Interactive Butterflies ---
-        const bGeo = new THREE.PlaneGeometry(0.3, 0.3);
-        bGeo.rotateX(Math.PI / 2);
-        const bMat = new THREE.MeshBasicMaterial({ color: 0xFFEB3B, side: THREE.DoubleSide });
-        const butterflies = [];
-        for(let i=0; i<40; i++) {
-            const b = new THREE.Mesh(bGeo, bMat);
-            b.position.set((Math.random()-0.5)*50, 2+Math.random()*4, (Math.random()-0.5)*30);
-            b.userData = { vel: new THREE.Vector3() };
-            scene.add(b);
-            butterflies.push(b);
+            const petals = [];
+            for(let i=0; i<8; i++) {
+                const petal = new THREE.Mesh(petalGeo, petalMat);
+                petal.rotation.y = (i / 8) * Math.PI * 2;
+                petal.userData.baseRotY = petal.rotation.y;
+                petal.rotation.x = 0.2; // Closed starting state
+                group.add(petal);
+                petals.push(petal);
+            }
+            
+            // Stem
+            const stemGeo = new THREE.CylinderGeometry(0.2, 0.2, 4);
+            stemGeo.translate(0, -2, 0);
+            const stemMat = new THREE.MeshStandardMaterial({ color: 0x4CAF50 });
+            const stem = new THREE.Mesh(stemGeo, stemMat);
+            group.add(stem);
+
+            group.position.set(x, 3, z);
+            scene.add(group);
+            heroFlowers.push({ group, petals, x, z, openLerp: 0 });
         }
-        let butterflyTarget = new THREE.Vector3(0, 2, 0);
+
+        // Place them distinctly in the foreground
+        createHeroFlower(-8, 2, brandColors[1]); // Orange
+        createHeroFlower(0, 5, brandColors[2]);  // Pink
+        createHeroFlower(8, 2, brandColors[4]);  // Purple
 
         // --- Camera & Motion Setup ---
-        const video = document.getElementById('webcam');
         const cameraSelect = document.getElementById('camera-select');
         const motionCanvas = document.getElementById('motion-canvas');
         const mCtx = motionCanvas.getContext('2d', { willReadFrequently: true });
@@ -407,6 +362,9 @@
 
         let prevFrame = null;
         let currentStream = null;
+        let recentAvgX = 0;
+        let recentAvgZ = 0;
+        let motionDetected = false;
 
         async function getCameras() {
             try {
@@ -445,7 +403,7 @@
 
             mCtx.drawImage(video, 0, 0, GRID_W, GRID_H);
             const currentFrame = mCtx.getImageData(0, 0, GRID_W, GRID_H).data;
-            let motionCount = 0; let avgX = 0; let avgZ = 0;
+            let motionCount = 0; let totalX = 0; let totalZ = 0;
 
             if (prevFrame) {
                 for (let y = 0; y < GRID_H; y+=2) { 
@@ -462,42 +420,14 @@
                                 document.getElementById('center-message').style.opacity = 0;
                             }
 
-                            // --- 1. Draw Silhouette ---
-                            // Map webcam grid to screen size to draw magical blue shadows
-                            const silX = (1 - (x / GRID_W)) * silCanvas.width;
-                            const silY = (y / GRID_H) * silCanvas.height;
-                            
-                            silCtx.fillStyle = 'rgba(33, 150, 243, 0.4)'; // BxCM Blue with opacity
-                            silCtx.beginPath();
-                            silCtx.arc(silX, silY, 20, 0, Math.PI*2);
-                            silCtx.fill();
-
-                            // Convert webcam coordinates to 3D Field Coordinates
                             const normX = (1 - (x / GRID_W)) * 2 - 1; 
                             const normY = -( (y / GRID_H) * 2 - 1 );
 
                             const worldX = normX * 25.0; 
                             const worldZ = normY * 15.0; 
 
-                            avgX += worldX; avgZ += worldZ; motionCount++;
+                            totalX += worldX; totalZ += worldZ; motionCount++;
 
-                            // --- 2. Check Orb Collisions (Weather Change) ---
-                            orbs.forEach(orbData => {
-                                // Project 3D orb position to 2D screen space
-                                const pos = orbData.mesh.position.clone().project(camera);
-                                const orbGridX = (1 - (pos.x + 1) / 2) * GRID_W; 
-                                const orbGridY = (-(pos.y - 1) / 2) * GRID_H;
-                                
-                                // Check if motion is near the orb in 2D space
-                                if (Math.hypot(x - orbGridX, y - orbGridY) < 4) {
-                                    targetFogColor.setHex(orbData.season.fog);
-                                    targetRootColor.setHex(orbData.season.root);
-                                    // Make it pop visually to confirm touch
-                                    orbData.mesh.scale.set(1.6, 1.6, 1.6); 
-                                }
-                            });
-
-                            // --- 3. Grass physics Map ---
                             const tx = ((worldX + 25) / 50) * mapSize;
                             const ty = ((worldZ + 15) / 30) * mapSize;
 
@@ -508,82 +438,63 @@
                             windCtx.fillStyle = g1;
                             windCtx.arc(tx, ty, 20, 0, Math.PI*2);
                             windCtx.fill();
-
-                            bloomCtx.beginPath();
-                            const g2 = bloomCtx.createRadialGradient(tx, ty, 0, tx, ty, 35);
-                            g2.addColorStop(0, 'rgba(255,255,255,1)');
-                            g2.addColorStop(1, 'rgba(255,255,255,0)');
-                            bloomCtx.fillStyle = g2;
-                            bloomCtx.arc(tx, ty, 35, 0, Math.PI*2);
-                            bloomCtx.fill();
                         }
                     }
                 }
             }
 
-            if(motionCount > 0) {
-                butterflyTarget.x += (avgX/motionCount - butterflyTarget.x) * 0.05;
-                butterflyTarget.z += (avgZ/motionCount - butterflyTarget.z) * 0.05;
+            if(motionCount > 5) {
+                recentAvgX = totalX / motionCount;
+                recentAvgZ = totalZ / motionCount;
+                motionDetected = true;
+            } else {
+                motionDetected = false;
             }
 
             prevFrame = new Uint8ClampedArray(currentFrame);
             windTex.needsUpdate = true;
-            bloomTex.needsUpdate = true;
         }
 
-        // --- Animation & Fade Loops ---
+        // --- Animation Loop ---
         function animate() {
             requestAnimationFrame(animate);
 
-            // 1. Fade out the silhouette over time so it looks like a shadow trail
-            silCtx.globalCompositeOperation = 'destination-out';
-            silCtx.fillStyle = 'rgba(0, 0, 0, 0.15)'; // speed of fading
-            silCtx.fillRect(0, 0, silCanvas.width, silCanvas.height);
-            silCtx.globalCompositeOperation = 'source-over'; // reset
-
-            // 2. Fade physics textures
+            // Fade Wind
             windCtx.fillStyle = 'rgba(0, 0, 0, 0.12)';
             windCtx.fillRect(0, 0, mapSize, mapSize);
 
-            bloomCtx.fillStyle = 'rgba(0, 0, 0, 0.015)';
-            bloomCtx.fillRect(0, 0, mapSize, mapSize);
-
             checkMotion();
             
-            // 3. Smoothly transition seasons based on orb touches
-            scene.fog.color.lerp(targetFogColor, 0.02);
-            renderer.setClearColor(scene.fog.color);
-            grassParams.rootColor.value.lerp(targetRootColor, 0.02);
-            
-            // Shrink orbs back to normal if they were touched
-            orbs.forEach(o => o.mesh.scale.lerp(new THREE.Vector3(1, 1, 1), 0.1));
-
             grassParams.time.value += 0.016;
             const time = Date.now() * 0.001;
 
-            if(hasStarted && Math.random() > 0.98) {
-                butterflyTarget.x = Math.sin(time)*15;
-                butterflyTarget.z = Math.cos(time*1.3)*10;
-            }
-
-            butterflies.forEach((b, i) => {
-                let target = butterflyTarget.clone();
-                target.x += Math.sin(time*2 + i)*3;
-                target.z += Math.cos(time*2 + i)*3;
-                target.y = 2 + Math.sin(time*3 + i)*1.5;
-
-                let dir = new THREE.Vector3().subVectors(target, b.position).normalize();
-                b.userData.vel.add(dir.multiplyScalar(0.005));
-                b.userData.vel.clampLength(0, 0.15);
-                b.position.add(b.userData.vel);
+            // Animate Giant Hero Flowers Interactivity
+            heroFlowers.forEach(flower => {
+                let motionNear = false;
                 
-                b.scale.x = 0.2 + Math.abs(Math.sin(time * 20 + i)) * 0.8; 
-                b.lookAt(b.position.clone().add(b.userData.vel));
-            });
+                // If motion is happening near this specific flower's X coordinate
+                if (motionDetected) {
+                    const dist = Math.abs(flower.x - recentAvgX);
+                    if (dist < 8) motionNear = true;
+                }
+                
+                // Lerp petal opening
+                flower.openLerp += motionNear ? 0.06 : -0.015;
+                flower.openLerp = Math.max(0, Math.min(1, flower.openLerp));
+                
+                flower.petals.forEach(petal => {
+                    // Closed rotation: 0.2, Open fully flat: 1.6
+                    const targetRotX = THREE.MathUtils.lerp(0.2, 1.6, flower.openLerp);
+                    petal.rotation.x = targetRotX;
+                    // Add subtle breathing wobble when fully open
+                    if(flower.openLerp > 0.9) {
+                        petal.rotation.x += Math.sin(time * 3 + petal.userData.baseRotY) * 0.05;
+                    }
+                });
 
-            // Gentle floating motion for the sky orbs
-            orbs.forEach((o, i) => {
-                o.mesh.position.y = 16 + Math.sin(time * 2 + i * 2) * 0.5;
+                // Spin center slowly
+                flower.group.children[0].rotation.y = time * 0.5;
+                flower.group.position.y = 3 + Math.sin(time + flower.x) * 0.2; // Gentle hover
             });
 
             renderer.render(scene, camera);
