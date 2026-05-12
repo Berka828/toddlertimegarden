@@ -361,10 +361,11 @@
             if (results.poseLandmarks) {
                 const lm = results.poseLandmarks;
 
-                const w1 = getThreeCoords(lm[15], -20); // Left Hand
-                const w2 = getThreeCoords(lm[16], -20); // Right Hand
-                const f1 = getThreeCoords(lm[27], 0);   // Left Foot
-                const f2 = getThreeCoords(lm[28], 0);   // Right Foot
+                // CHANGED: 15 & 16 are wrists. 19 & 20 are index fingers!
+                const w1 = getThreeCoords(lm[19], -20); // Left Index Finger
+                const w2 = getThreeCoords(lm[20], -20); // Right Index Finger
+                const f1 = getThreeCoords(lm[27], 0);   // Left Foot (Ankle)
+                const f2 = getThreeCoords(lm[28], 0);   // Right Foot (Ankle)
 
                 leftHandTracker.position.copy(w1);
                 rightHandTracker.position.copy(w2);
