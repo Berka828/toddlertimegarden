@@ -51,6 +51,8 @@
             background: #E91E63; color: white; border: none; cursor: pointer; font-family: 'Quicksand', sans-serif; font-weight: 600;
         }
         button:hover { background: #FF5722; }
+        #reset-btn { background: #4CAF50; }
+        #reset-btn:hover { background: #388E3C; }
 
         /* AI Loading Screen */
         #loading-screen {
@@ -92,6 +94,7 @@
         </div>
         <div id="admin-panel">
             <button id="fullscreen-btn">Toggle Fullscreen (F)</button>
+            <button id="reset-btn">Reset to Seed (R)</button>
         </div>
     </div>
 
@@ -117,7 +120,7 @@
         // Lights
         const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.8);
         scene.add(hemiLight);
-        const dirLight = new THREE.DirectionalLight(0xffeedd, 1.0); // Base intensity, will increase with sun
+        const dirLight = new THREE.DirectionalLight(0xffeedd, 1.0); 
         dirLight.position.set(20, 40, 15);
         scene.add(dirLight);
 
@@ -195,16 +198,19 @@
         silhouetteMesh.position.set(0, 15, -35); 
         scene.add(silhouetteMesh);
 
-        // Tracking Indicators
-        const trackerGeo = new THREE.SphereGeometry(0.8, 16, 16);
-        const trackerMat = new THREE.MeshBasicMaterial({ color: 0x00FF00, transparent: true, opacity: 0.8 });
-        const footTrackerMat = new THREE.MeshBasicMaterial({ color: 0xFF5722, transparent: true, opacity: 0.8 });
-
-        const leftHandTracker = new THREE.Mesh(trackerGeo, trackerMat);
-        const rightHandTracker = new THREE.Mesh(trackerGeo, trackerMat);
-        const leftFootTracker = new THREE.Mesh(trackerGeo, footTrackerMat);
-        const rightFootTracker = new THREE.Mesh(trackerGeo, footTrackerMat);
-        scene.add(leftHandTracker, rightHandTracker, leftFootTracker, rightFootTracker);
+        // Hand & Finger Tracking Indicators
+        const handTrackers = new THREE.Group();
+        scene.add(handTrackers);
+        
+        const trackerGeo = new THREE.SphereGeometry(0.5, 16, 16);
+        const trackerMat = new THREE.MeshBasicMaterial({ color: 0x00FF00, transparent: true, opacity: 0.7 });
+        
+        // Array to hold 4 markers per hand (Wrist, Thumb, Index, Pinky) to show hand span
+        const leftHandMarkers = Array.from({length: 4}, () => new THREE.Mesh(trackerGeo, trackerMat));
+        const rightHandMarkers = Array.from({length: 4}, () => new THREE.Mesh(trackerGeo, trackerMat));
+        
+        leftHandMarkers.forEach(m => handTrackers.add(m));
+        rightHandMarkers.forEach(m => handTrackers.add(m));
 
         // --- Responsive Grass ---
         const mapSize = 256;
@@ -281,7 +287,7 @@
             const petal = new THREE.Mesh(petalGeo, petalMat);
             petal.rotation.y = (i / 12) * Math.PI * 2;
             petal.userData.baseRotY = petal.rotation.y;
-            petal.rotation.x = 0.5; 
+            petal.rotation.x = 0.2; // Start tighter
             flowerHead.add(petal); petals.push(petal);
         }
         const center = new THREE.Mesh(new THREE.SphereGeometry(2.5, 32, 16).scale(1, 0.4, 1), new THREE.MeshStandardMaterial({ color: 0xFFC107 }));
@@ -289,8 +295,9 @@
 
         // Gamification Variables
         let flowerInteraction = 0; // Hand touch
-        let currentFlowerGrowth = 0.05; // Starts tiny like a seed
-        const maxFlowerGrowth = 0.7; // Maximum size
+        const seedSize = 0.05;
+        let currentFlowerGrowth = seedSize; 
+        const maxFlowerGrowth = 0.7; 
 
         flowerGroup.scale.setScalar(currentFlowerGrowth);
 
@@ -345,14 +352,18 @@
 
             if (results.poseLandmarks) {
                 const lm = results.poseLandmarks;
-                const w1 = getThreeCoords(lm[15], -20); 
-                const w2 = getThreeCoords(lm[16], -20); 
+                
+                // Track Hand parts: Wrist, Pinky, Index, Thumb
+                const leftPoints = [lm[15], lm[17], lm[19], lm[21]].map(p => getThreeCoords(p, -15));
+                const rightPoints = [lm[16], lm[18], lm[20], lm[22]].map(p => getThreeCoords(p, -15));
+                
+                // Update tracker meshes
+                leftPoints.forEach((pt, i) => leftHandMarkers[i].position.copy(pt));
+                rightPoints.forEach((pt, i) => rightHandMarkers[i].position.copy(pt));
+
+                // Feet/Movement logic for grass
                 const f1 = getThreeCoords(lm[27], 0);   
                 const f2 = getThreeCoords(lm[28], 0);   
-
-                leftHandTracker.position.copy(w1); rightHandTracker.position.copy(w2);
-                leftFootTracker.position.copy(f1); rightFootTracker.position.copy(f2);
-
                 [f1, f2].forEach(foot => {
                     const tx = ((foot.x + 40) / 80) * mapSize;
                     const ty = ((foot.z + 15) / 30) * mapSize;
@@ -366,20 +377,45 @@
                 const sunWorld = new THREE.Vector3(-20, 27, 0);
                 const flowerHeadWorld = new THREE.Vector3(0, 10, 0); 
 
-                // Cloud / Rain Interaction
-                if (dist2D(w1, cloudWorld) < 18 || dist2D(w2, cloudWorld) < 18) {
-                    isRaining = true;
-                }
+                // Checking interaction using ANY part of the tracked hands
+                const leftTouchesSun = leftPoints.some(pt => dist2D(pt, sunWorld) < 18);
+                const rightTouchesSun = rightPoints.some(pt => dist2D(pt, sunWorld) < 18);
+                const touchingSun = leftTouchesSun || rightTouchesSun;
 
-                // Sun Interaction
-                if (dist2D(w1, sunWorld) < 18 || dist2D(w2, sunWorld) < 18) {
+                const leftTouchesCloud = leftPoints.some(pt => dist2D(pt, cloudWorld) < 18);
+                const rightTouchesCloud = rightPoints.some(pt => dist2D(pt, cloudWorld) < 18);
+                const touchingCloud = leftTouchesCloud || rightTouchesCloud;
+
+                // --- NEW GAMIFICATION LOGIC ---
+                if (touchingSun && touchingCloud) {
+                    // Both hands up! Positive Growth
+                    currentFlowerGrowth += 0.002;
                     sunInteraction = 1;
+                    isRaining = true;
+                } else if (touchingSun && !touchingCloud) {
+                    // Only sun -> Negative Growth
+                    currentFlowerGrowth -= 0.002;
+                    sunInteraction = 1;
+                    isRaining = false;
+                } else if (touchingCloud && !touchingSun) {
+                    // Only rain -> Negative Growth
+                    currentFlowerGrowth -= 0.002;
+                    isRaining = true;
+                    sunInteraction = 0;
                 } else {
+                    // No hands in sky
+                    isRaining = false;
                     sunInteraction = Math.max(0, sunInteraction - 0.05);
                 }
 
-                // Flower Touch Interaction (Only works well if it's grown!)
-                if (dist2D(w1, flowerHeadWorld) < 15 || dist2D(w2, flowerHeadWorld) < 15 || dist2D(f1, flowerHeadWorld) < 15) {
+                // Clamp growth
+                currentFlowerGrowth = Math.max(seedSize, Math.min(maxFlowerGrowth, currentFlowerGrowth));
+
+                // Flower Touch Interaction (Blooming)
+                const leftTouchesFlower = leftPoints.some(pt => dist2D(pt, flowerHeadWorld) < 15);
+                const rightTouchesFlower = rightPoints.some(pt => dist2D(pt, flowerHeadWorld) < 15);
+                
+                if (leftTouchesFlower || rightTouchesFlower || dist2D(f1, flowerHeadWorld) < 15) {
                     flowerInteraction += 0.1;
                 } else {
                     flowerInteraction -= 0.05;
@@ -412,12 +448,11 @@
             windTex.needsUpdate = true;
             grassParams.time.value += 0.016;
 
-            // 1. Sun independent impact: brightens light in the whole scene
+            // Visual Updates based on logic
             dirLight.intensity = 1.0 + (sunInteraction * 1.5);
             sun.scale.setScalar(1 + Math.sin(time*5) * 0.1 * sunInteraction);
             sun.material.color.setHex(sunInteraction > 0.5 ? 0xFF9800 : 0xFFEB3B);
 
-            // 2. Rain independent impact: animates rain, waters seed slightly
             if(isRaining) {
                 rainIntensity = Math.min(1, rainIntensity + 0.05);
                 rainMat.opacity = rainIntensity;
@@ -427,37 +462,32 @@
                     if(pos[i*3+1] < -20) { pos[i*3+1] = 5; pos[i*3] = (Math.random()-0.5)*15; }
                 }
                 rainGeo.attributes.position.needsUpdate = true;
-                
-                // Rain slowly grows flower even without sun
-                currentFlowerGrowth = Math.min(maxFlowerGrowth, currentFlowerGrowth + 0.0003);
-
-                if(Math.random() < 0.005) isRaining = false;
             } else {
                 rainIntensity = Math.max(0, rainIntensity - 0.02);
                 rainMat.opacity = rainIntensity;
             }
 
-            // 3. Combined Impact: Rainbow + Faster Growth
+            // Rainbow if both are active
             if (isRaining && sunInteraction > 0.1) {
                 rainbowMat.opacity = Math.min(0.8, rainbowMat.opacity + 0.01);
-                // Extra growth bonus for combining both elements!
-                currentFlowerGrowth = Math.min(maxFlowerGrowth, currentFlowerGrowth + 0.001);
             } else {
                 rainbowMat.opacity = Math.max(0, rainbowMat.opacity - 0.01);
             }
 
-            // Gamified Scale (Base growth + touch interaction burst)
             flowerGroup.rotation.z = Math.sin(time) * 0.05;
-            flowerGroup.scale.setScalar(currentFlowerGrowth + (flowerInteraction * 0.15)); 
+            flowerGroup.scale.setScalar(currentFlowerGrowth + (flowerInteraction * 0.1)); 
 
+            // FIXED BLOOMING ANIMATION
             petals.forEach((petal, i) => {
-                // Tighter petals when it's just a seed, open wide when full grown and touched
-                const baseOpen = THREE.MathUtils.lerp(0.1, 0.5, currentFlowerGrowth / maxFlowerGrowth);
-                petal.rotation.x = THREE.MathUtils.lerp(baseOpen, 1.8, flowerInteraction);
+                // Tighter petals when it's just a seed
+                const baseOpen = THREE.MathUtils.lerp(0.1, 0.4, currentFlowerGrowth / maxFlowerGrowth);
+                
+                // Max bloom is now ~1.0 radian (approx 57 degrees) so it looks like an open cup, not flopped over
+                petal.rotation.x = THREE.MathUtils.lerp(baseOpen, 1.0, flowerInteraction);
                 petal.rotation.x += Math.sin(time * 2 + petal.userData.baseRotY) * 0.05;
             });
 
-            // Pollen Burst (Only triggers heavily if the flower has grown past a certain point)
+            // Pollen Burst 
             if (flowerInteraction > 0.6 && currentFlowerGrowth > 0.4) {
                 for(let k=0; k<3; k++) {
                     const headWorldX = flowerGroup.position.x;
@@ -481,8 +511,10 @@
             }
             pollenGeo.attributes.position.needsUpdate = true;
 
+            // Pulse the hand trackers
             const pulse = 0.8 + Math.sin(time*10)*0.2;
-            leftHandTracker.scale.setScalar(pulse); rightHandTracker.scale.setScalar(pulse);
+            leftHandMarkers.forEach(m => m.scale.setScalar(pulse));
+            rightHandMarkers.forEach(m => m.scale.setScalar(pulse));
 
             renderer.render(scene, camera);
         }
@@ -493,7 +525,18 @@
             if (!document.fullscreenElement) document.documentElement.requestFullscreen();
             else document.exitFullscreen();
         });
-        window.addEventListener('keydown', (e) => { if (e.key.toLowerCase() === 'f') document.getElementById('fullscreen-btn').click(); });
+        
+        // Reset Logic
+        document.getElementById('reset-btn').addEventListener('click', () => {
+            currentFlowerGrowth = seedSize;
+            flowerInteraction = 0;
+        });
+
+        window.addEventListener('keydown', (e) => { 
+            if (e.key.toLowerCase() === 'f') document.getElementById('fullscreen-btn').click(); 
+            if (e.key.toLowerCase() === 'r') document.getElementById('reset-btn').click(); 
+        });
+
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
