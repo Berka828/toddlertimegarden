@@ -552,6 +552,13 @@
     }
 
     async function initMediaPipe() {
+      // Camera access usually works only on HTTPS or localhost.
+      // Best beginner option: run this file with VS Code Live Server, or Python localhost server.
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        statusEl.textContent = 'Camera access is not available. Use Chrome on HTTPS or localhost.';
+        throw new Error('getUserMedia not available');
+      }
+
       const hands = new Hands({
         locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
       });
@@ -580,15 +587,33 @@
         pinchActive = pinchDistance < 0.055;
       });
 
-      const cameraUtils = new Camera(video, {
-        onFrame: async () => {
-          await hands.send({ image: video });
-        },
-        width: 640,
-        height: 480
-      });
-      await cameraUtils.start();
-      statusEl.textContent = 'Camera ready. Show one hand!';
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            width: { ideal: 640 },
+            height: { ideal: 480 },
+            facingMode: 'user'
+          },
+          audio: false
+        });
+
+        video.srcObject = stream;
+        await video.play();
+
+        async function processFrame() {
+          if (video.readyState >= 2) {
+            await hands.send({ image: video });
+          }
+          requestAnimationFrame(processFrame);
+        }
+
+        processFrame();
+        statusEl.textContent = 'Camera ready. Show one hand!';
+      } catch (err) {
+        console.error('Camera error:', err);
+        statusEl.textContent = 'Camera blocked. Use Chrome, allow camera access, and run from localhost or HTTPS.';
+        throw err;
+      }
     }
 
     startBtn.addEventListener('click', async () => {
